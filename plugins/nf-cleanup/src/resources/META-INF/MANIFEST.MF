@@ -1,0 +1,6 @@
+Manifest-Version: 1.0
+Plugin-Id: nf-cleanup
+Plugin-Version: 0.1.0
+Plugin-Class: nextflow.cleanup.CleanupPlugin
+Plugin-Provider: nextflow
+Plugin-Requires: >=23.10.0
