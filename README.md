@@ -42,6 +42,8 @@ The plugin requires Nextflow version `23.10.0` or later.
 
 Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
 
+*NOTE: Resume is not supported with automatic cleanup. Deleted tasks will be re-executed on a resumed run.*
+
 ## Development
 
 The easiest way to build and test nf-boost locally is to run `make install`. This will build the plugin and install it to your Nextflow plugins directory (e.g. `~/.nextflow/plugins`), using the version defined in `MANIFEST.MF`. Finally, specify the plugin in your Nextflow config with this exact version. You can then use it locally like a regular plugin.
