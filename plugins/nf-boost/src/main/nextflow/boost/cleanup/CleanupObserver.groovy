@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package nextflow.cleanup
+package nextflow.boost.cleanup
 
 import java.nio.file.FileSystem
 import java.nio.file.Path
@@ -71,7 +71,7 @@ class CleanupObserver implements TraceObserver {
             .create()
 
         if( session.resumeMode )
-            log.warn "Automatic cleanup does not currently work with resume, deleted tasks will be re-executed"
+            log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
     }
 
     /**

@@ -1,4 +1,4 @@
-name: nf-cleanup CI
+name: nf-boost CI
 on:
   push:
     branches:
@@ -10,7 +10,7 @@ on:
       - '*'
 jobs:
   build:
-    name: Build nf-cleanup
+    name: Build nf-boost
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     runs-on: ubuntu-latest
     timeout-minutes: 10

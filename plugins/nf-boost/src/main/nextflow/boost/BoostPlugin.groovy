@@ -14,7 +14,7 @@
  * limitations under the License.
  */
 
-package nextflow.cleanup
+package nextflow.boost
 
 import groovy.transform.CompileStatic
 import nextflow.plugin.BasePlugin
@@ -22,14 +22,14 @@ import nextflow.plugin.Scoped
 import org.pf4j.PluginWrapper
 
 /**
- * Implements the cleanup plugin entry point
+ * Implements the nf-boost plugin entry point
  *
  * @author Ben Sherman <bentshermann@gmail.com>
  */
 @CompileStatic
-class CleanupPlugin extends BasePlugin {
+class BoostPlugin extends BasePlugin {
 
-    CleanupPlugin(PluginWrapper wrapper) {
+    BoostPlugin(PluginWrapper wrapper) {
         super(wrapper)
     }
 }

@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-package nextflow.cleanup
+package nextflow.boost
 
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.Session
+import nextflow.boost.cleanup.CleanupObserver
 import nextflow.trace.TraceObserver
 import nextflow.trace.TraceObserverFactory
 
@@ -29,11 +30,16 @@ import nextflow.trace.TraceObserverFactory
  */
 @Slf4j
 @CompileStatic
-class CleanupObserverFactory implements TraceObserverFactory {
+class BoostObserverFactory implements TraceObserverFactory {
 
     @Override
     Collection<TraceObserver> create(Session session) {
-        [ new CleanupObserver() ] as List<TraceObserver>
+        List<TraceObserver> result = []
+
+        if( session.config.navigate('boost.cleanup', false) )
+            result << new CleanupObserver()
+
+        return result
     }
 
 }
