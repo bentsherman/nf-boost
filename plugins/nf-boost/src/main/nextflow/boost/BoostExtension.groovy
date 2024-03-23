@@ -19,10 +19,14 @@ package nextflow.boost
 import java.nio.file.Path
 
 import groovy.transform.CompileStatic
+import groovyx.gpars.dataflow.DataflowReadChannel
+import groovyx.gpars.dataflow.DataflowWriteChannel
 import nextflow.Session
+import nextflow.boost.ops.ThenOp
 import nextflow.boost.writers.CsvWriter
 import nextflow.boost.writers.TextWriter
 import nextflow.plugin.extension.Function
+import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
 
 @CompileStatic
@@ -59,6 +63,16 @@ class BoostExtension extends PluginExtensionPoint {
             throw new IllegalArgumentException('At least one item must be provided')
 
         new TextWriter(opts).apply(items, path)
+    }
+
+    @Operator
+    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], Closure closure) {
+        then(source, opts, [onNext: closure])
+    }
+
+    @Operator
+    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], Map<String,Closure> events) {
+        new ThenOp(source, events, opts).apply()
     }
 
 }

@@ -16,6 +16,8 @@ Currently includes the following features:
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
 
+- `then` operator for defining custom operators in your pipeline
+
 ## Getting Started
 
 To use `nf-boost`, include it in your Nextflow config and add any desired settings:
@@ -37,6 +39,10 @@ export NXF_PLUGINS_TEST_REPOSITORY="https://github.com/bentsherman/nf-boost/rele
 ```
 
 The plugin requires Nextflow version `23.10.0` or later.
+
+## Examples
+
+Check out the `examples` directory for example pipelines that demonstrate how to use the features in this plugin.
 
 ## Reference
 
@@ -73,6 +79,20 @@ Available options:
 - `newLine`: Append a newline character after each entry (default: `false`).
 
 - `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
+
+### Operators
+
+**`then( closure, [opts] )`**
+
+**`then( events, [opts] )`**
+
+The `then` operator is a generic operator that can be used to implement any operator you can imagine.
+
+It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has an `emit()` method with which it can emit items to an output channel.
+
+Available options:
+
+- `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
 
 ## Development
 

@@ -90,7 +90,6 @@ class TextWriter {
         path << data
         if( newLine )
             path << System.lineSeparator()
-
     }
 
 }
