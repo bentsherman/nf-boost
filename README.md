@@ -10,7 +10,9 @@ Nextflow plugin for experimental features that want to become core features!
 
 Currently includes the following features:
 
-- automatic deletion of temporary files (set `boost.cleanup = true` in your config)
+- automatic deletion of temporary files (`boost.cleanup`)
+
+- `mergeCsv` function for saving records to a CSV file
 
 ## Getting Started
 
@@ -43,6 +45,18 @@ The plugin requires Nextflow version `23.10.0` or later.
 Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
 
 *NOTE: Resume is not supported with automatic cleanup. Deleted tasks will be re-executed on a resumed run.*
+
+### Functions
+
+**`mergeCsv( records, path, [opts] )`**
+
+Save a list of records (i.e. list or map objects) to a CSV file.
+
+Available options:
+
+- `header`: When `true`, the keys of the first record are used as the column names (default: `false`). Can also be a list of column names.
+
+- `sep`: The character used to separate values (default: `','`).
 
 ## Development
 
