@@ -14,6 +14,8 @@ Currently includes the following features:
 
 - `mergeCsv` function for saving records to a CSV file
 
+- `mergeText` function for saving items to a text file (similar to `collectFile` operator)
+
 ## Getting Started
 
 To use `nf-boost`, include it in your Nextflow config and add any desired settings:
@@ -52,13 +54,25 @@ Temporary files will be automatically deleted as soon as they are no longer need
 
 **`mergeCsv( records, path, [opts] )`**
 
-Save a list of records (i.e. list or map objects) to a CSV file.
+Save a list of records (i.e. tuples or maps) to a CSV file.
 
 Available options:
 
 - `header`: When `true`, the keys of the first record are used as the column names (default: `false`). Can also be a list of column names.
 
 - `sep`: The character used to separate values (default: `','`).
+
+**`mergeText( items, path, [opts] )`**
+
+Save a list of items (i.e. files or strings) to a text file.
+
+Available options:
+
+- `keepHeader`: Prepend the resulting file with the header of the first file (default: `false`). The number of header lines can be specified using the `skip` option, to determine how many lines to remove from each file.
+
+- `newLine`: Append a newline character after each entry (default: `false`).
+
+- `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
 
 ## Development
 

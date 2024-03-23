@@ -20,6 +20,8 @@ import java.nio.file.Path
 
 import groovy.transform.CompileStatic
 import nextflow.Session
+import nextflow.boost.writers.CsvWriter
+import nextflow.boost.writers.TextWriter
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.PluginExtensionPoint
 
@@ -37,40 +39,26 @@ class BoostExtension extends PluginExtensionPoint {
      * @param path
      */
     @Function
-    void mergeCsv(Map opts=[:], List<Map> records, Path path) {
+    void mergeCsv(Map opts=[:], List records, Path path) {
         if( records.size() == 0 )
             throw new IllegalArgumentException('At least one record must be provided')
 
-        final header = opts.header
-        final sep = opts.sep ? opts.sep.toString() : ','
+        new CsvWriter(opts).apply(records, path)
+    }
 
-        Collection columns
-        if( header == true ) {
-            final first = records.first()
-            if( first !instanceof Map )
-                throw new IllegalArgumentException('Records must be map objects when header=true')
-            columns = first.keySet()
-        }
-        else if( header instanceof List ) {
-            columns = header
-        }
+    /**
+     * Save a list of items to a text file.
+     *
+     * @param opts
+     * @param items
+     * @param path
+     */
+    @Function
+    void mergeText(Map opts=[:], List items, Path path) {
+        if( items.size() == 0 )
+            throw new IllegalArgumentException('At least one item must be provided')
 
-        if( columns )
-            path << columns.collect(it -> '"' + it + '"').join(sep) << '\n'
-
-        for( final record : records ) {
-            Collection values
-            if( record instanceof List )
-                values = record
-            else if( record instanceof Map )
-                values = columns
-                    ? record.subMap(columns).values()
-                    : record.values()
-            else
-                throw new IllegalArgumentException('Records must be list or map objects')
-
-            path << values.collect(it -> '"' + it + '"').join(sep) << '\n'
-        }
+        new TextWriter(opts).apply(items, path)
     }
 
 }
