@@ -42,7 +42,9 @@ The plugin requires Nextflow version `23.10.0` or later.
 
 **`boost.cleanup`**
 
-Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
+Set to `true` to enable automatic cleanup (default: `false`).
+
+Temporary files will be automatically deleted as soon as they are no longer needed. Additionally, each task directory will be deleted as soon as the task outputs are no longer needed.
 
 *NOTE: Resume is not supported with automatic cleanup. Deleted tasks will be re-executed on a resumed run.*
 
