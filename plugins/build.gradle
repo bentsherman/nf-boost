@@ -19,7 +19,7 @@ plugins {
     id "io.nextflow.nf-build-plugin" version "1.0.1"
 }
 
-ext.github_organization = 'nextflow-io'
+ext.github_organization = project.findProperty('github_organization') ?: 'nextflow-io'
 ext.github_username = project.findProperty('github_username') ?: 'bentsherman'
 ext.github_access_token = project.findProperty('github_access_token') ?: System.getenv('GITHUB_TOKEN')
 ext.github_commit_email = project.findProperty('github_commit_email') ?: 'bentshermann@gmail.com'
