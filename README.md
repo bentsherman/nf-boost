@@ -94,7 +94,7 @@ The `then` operator is a generic operator that can be used to implement (nearly)
 
 It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has access to two methods: `emit()` to emit items to an output channel, and `done()` to ignore any remaining source items.
 
-*NOTE: currently only supports one input and one output channel*
+*NOTE: multiple input channels are not currently supported*
 
 Available options:
 
