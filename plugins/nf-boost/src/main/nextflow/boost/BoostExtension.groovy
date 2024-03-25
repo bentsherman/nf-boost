@@ -28,6 +28,7 @@ import nextflow.boost.writers.TextWriter
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
+import nextflow.script.ChannelOut
 
 @CompileStatic
 class BoostExtension extends PluginExtensionPoint {
@@ -45,7 +46,7 @@ class BoostExtension extends PluginExtensionPoint {
     @Function
     void mergeCsv(Map opts=[:], List records, Path path) {
         if( records.size() == 0 )
-            throw new IllegalArgumentException('At least one record must be provided')
+            throw new IllegalArgumentException('In `mergeCsv` function -- at least one record must be provided')
 
         new CsvWriter(opts).apply(records, path)
     }
@@ -60,19 +61,33 @@ class BoostExtension extends PluginExtensionPoint {
     @Function
     void mergeText(Map opts=[:], List items, Path path) {
         if( items.size() == 0 )
-            throw new IllegalArgumentException('At least one item must be provided')
+            throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
 
         new TextWriter(opts).apply(items, path)
     }
 
     @Operator
     DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], Closure closure) {
-        then(source, opts, [onNext: closure])
+        then(source, opts + [onNext: closure])
     }
 
     @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], Map<String,Closure> events) {
-        new ThenOp(source, events, opts).apply()
+    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:]) {
+        if( opts.emits )
+            throw new IllegalArgumentException('In `then` operator -- emit names are not allowed, use `thenMany` instead')
+        new ThenOp(source, opts).apply().getOutput()
+    }
+
+    @Operator
+    ChannelOut thenMany(DataflowReadChannel source, Map opts=[:], Closure closure) {
+        thenMany(source, opts + [onNext: closure])
+    }
+
+    @Operator
+    ChannelOut thenMany(DataflowReadChannel source, Map opts=[:]) {
+        if( !opts.emits )
+            throw new IllegalArgumentException('In `thenMany` operator -- emit names must be defined, or use `then` instead')
+        new ThenOp(source, opts).apply().getMultiOutput()
     }
 
 }

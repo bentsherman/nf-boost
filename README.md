@@ -16,7 +16,7 @@ Currently includes the following features:
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
 
-- `then` operator for defining custom operators in your pipeline
+- `then` and `thenMany` operators for defining custom operators in your pipeline
 
 ## Getting Started
 
@@ -82,9 +82,13 @@ Available options:
 
 ### Operators
 
-**`then( closure, [opts] )`**
+**`then( onNext, [opts] )`**
 
-**`then( events, [opts] )`**
+**`then( opts )`**
+
+**`thenMany( onNext, emits: <emits>, [opts] )`**
+
+**`thenMany( emits: <emits>, opts )`**
 
 The `then` operator is a generic operator that can be used to implement (nearly) any operator you can imagine.
 
@@ -93,6 +97,14 @@ It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (s
 *NOTE: currently only supports one input and one output channel*
 
 Available options:
+
+- `emits`: List of output channel names when using `thenMany`. Whereas `then` emits a single channel, `thenMany` emits a multi-channel output (similar to processes and workflows) where each output can be accessed by name.
+
+- `onNext`: Closure that is invoked when an item is emitted. Equivalent to providing a closure as the first argument.
+
+- `onComplete`: Closure that is invoked after the last item is emitted by the channel.
+
+- `onError`: Closure that is invoked when an exception is raised while handling an `onNext` event. It will not make further calls to `onNext` or `onComplete`. The `onError` method takes as its parameter the `Throwable` that caused the error. By default, the error is logged and the workflow is terminated.
 
 - `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
 

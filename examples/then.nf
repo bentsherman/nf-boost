@@ -1,12 +1,27 @@
 
-include { then } from 'plugin/nf-boost'
+include { then ; thenMany } from 'plugin/nf-boost'
+
+@ValueObject
+class BranchCriteria {
+  String name
+  Closure predicate
+}
+
+def boostBranch(ch, List<BranchCriteria> criteria) {
+  final names = criteria.collect( c -> c.name )
+  ch.thenMany(emits: names) { it ->
+    for( def c : criteria )
+      if( c.predicate(it) )
+        emit(c.name, it)
+  }
+}
 
 def boostBuffer(ch, int size, boolean remainder=false) {
   if( size <= 0 )
     error 'buffer `size` parameter must be greater than zero'
 
   def buffer = []
-  ch.then([
+  ch.then(
     onNext: { it ->
       buffer << it
       if( buffer.size() == size ) {
@@ -18,12 +33,13 @@ def boostBuffer(ch, int size, boolean remainder=false) {
       if( remainder && buffer.size() > 0 )
         emit(buffer)
     }
-  ])
+  )
 }
 
 def boostCollect(ch) {
   final result = []
-  ch.then(singleton: true, [
+  ch.then(
+    singleton: true,
     onNext: { it ->
       result << it
     },
@@ -31,7 +47,7 @@ def boostCollect(ch) {
       if( result )
         emit(result)
     }
-  ])
+  )
 }
 
 def boostFilter(ch, Closure predicate) {
@@ -53,7 +69,7 @@ def boostFlatMap(ch, Closure mapper) {
 
 def boostIfEmpty(ch, value) {
   def empty = true
-  ch.then([
+  ch.then(
     onNext: { it ->
       emit(it)
       empty = false
@@ -62,7 +78,7 @@ def boostIfEmpty(ch, value) {
       if( empty )
         emit(value)
     }
-  ])
+  )
 }
 
 def boostMap(ch, Closure mapper) {
@@ -71,14 +87,29 @@ def boostMap(ch, Closure mapper) {
   }
 }
 
+@ValueObject
+class MultiMapCriteria {
+  String name
+  Closure transform
+}
+
+def boostMultiMap(ch, List<MultiMapCriteria> criteria) {
+  final names = criteria.collect( c -> c.name )
+  ch.thenMany(emits: names) { it ->
+    for( def c : criteria )
+      emit(c.name, c.transform(it))
+  }
+}
+
 def boostReduce(ch, seed, Closure accumulator) {
   def result = seed
-  ch.then(singleton: true, [
+  ch.then(
+    singleton: true,
     onNext: { it ->
       result = accumulator(result, it)
     },
     onComplete: { emit(result) }
-  ])
+  )
 }
 
 def boostScan(ch, seed, Closure accumulator) {
@@ -92,7 +123,6 @@ def boostScan(ch, seed, Closure accumulator) {
 def boostTake(ch, int n) {
   def count = 0
   ch.then(singleton: false) { it ->
-    // TODO: stop immediately if n == 0
     if( n != 0 )
       emit(it)
     if( n >= 0 && ++count >= n )
@@ -102,7 +132,7 @@ def boostTake(ch, int n) {
 
 def boostUnique(ch) {
   def result = []
-  ch.then([
+  ch.then(
     onNext: { it ->
       if( it !in result )
         result << it
@@ -110,7 +140,7 @@ def boostUnique(ch) {
     onComplete: {
       result.each( v -> emit(v) )
     }
-  ])
+  )
 }
 
 def parseQueueValues( queue ) {
@@ -133,6 +163,25 @@ workflow {
     : params.value
       ? Channel.value( params.value )
       : Channel.fromList( parseQueueValues(params.queue) )
+
+  // branch
+  ch_branch = boostBranch(ch, [
+      new BranchCriteria('div1', { it % 1 == 0 }),
+      new BranchCriteria('div2', { it % 2 == 0 }),
+      new BranchCriteria('div3', { it % 3 == 0 }),
+    ])
+
+  Channel.empty()
+    .mix(
+      ch_branch.div1.map { "div1: ${it}" },
+      ch_branch.div2.map { "div2: ${it}" },
+      ch_branch.div3.map { "div3: ${it}" }
+    )
+    .dump(tag: 'branch')
+
+  ch_branch.div1.dump(tag: 'branch:div1')
+  ch_branch.div2.dump(tag: 'branch:div2')
+  ch_branch.div3.dump(tag: 'branch:div3')
 
   // buffer
   boostBuffer(ch, 3, true)
@@ -157,6 +206,25 @@ workflow {
   // map
   boostMap(ch) { it * 2 }
     .dump(tag: 'map')
+
+  // multiMap
+  ch_multi = boostMultiMap(ch, [
+      new MultiMapCriteria('mul1', { it * 1 }),
+      new MultiMapCriteria('mul2', { it * 2 }),
+      new MultiMapCriteria('mul3', { it * 3 }),
+    ])
+
+  Channel.empty()
+    .mix(
+      ch_multi.mul1.map { "mul1: ${it}" },
+      ch_multi.mul2.map { "mul2: ${it}" },
+      ch_multi.mul3.map { "mul3: ${it}" }
+    )
+    .dump(tag: 'multiMap')
+
+  ch_multi.mul1.dump(tag: 'multiMap:mul1')
+  ch_multi.mul2.dump(tag: 'multiMap:mul2')
+  ch_multi.mul3.dump(tag: 'multiMap:mul3')
 
   // reduce
   boostReduce(ch, 0) { acc, v -> acc + v }
