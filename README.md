@@ -86,9 +86,11 @@ Available options:
 
 **`then( events, [opts] )`**
 
-The `then` operator is a generic operator that can be used to implement any operator you can imagine.
+The `then` operator is a generic operator that can be used to implement (nearly) any operator you can imagine.
 
-It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has an `emit()` method with which it can emit items to an output channel.
+It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has access to two methods: `emit()` to emit items to an output channel, and `done()` to ignore any remaining source items.
+
+*NOTE: currently only supports one input and one output channel*
 
 Available options:
 
