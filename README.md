@@ -3,7 +3,7 @@
 <p align="center">
   <em>while we wait for <a href="https://github.com/nextflow-io/nextflow/issues/452">four five two</a></em>
   <br>
-  <em>here is a very special plugin, just for you</em>
+  <em>a very special plugin, just for you</em>
 </p>
 
 Nextflow plugin for experimental features that want to become core features!
