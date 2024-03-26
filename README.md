@@ -54,7 +54,28 @@ Set to `true` to enable automatic cleanup (default: `false`).
 
 Temporary files will be automatically deleted as soon as they are no longer needed. Additionally, each task directory will be deleted as soon as the task outputs are no longer needed.
 
-*NOTE: Resume is not supported with automatic cleanup. Deleted tasks will be re-executed on a resumed run.*
+Limitations:
+
+- Resume is not supported with automatic cleanup at this time. Deleted tasks will be re-executed on a resumed run. Resume will be supported when this feature is finalized in Nextflow.
+
+- Files created by operators (e.g. `collectFile`, `splitFastq`) cannot be tracked and so will not be deleted. For optimal performance, consider refactoring such operators into processes:
+
+  - Splitter operators such as `splitFastq` can also be used as functions in a native process:
+
+    ```groovy
+    process SPLIT_FASTQ {
+      input:
+      val(fastq)
+
+      output:
+      path(chunks)
+
+      exec:
+      chunks = splitFastq(fastq, file: true)
+    }
+    ```
+
+  - The `collectFile` operator can be replaced with `mergeText` (in this plugin) in a native process. See the `examples` directory for example usage.
 
 ### Functions
 
@@ -90,7 +111,7 @@ Available options:
 
 **`thenMany( emits: <emits>, opts )`**
 
-The `then` operator is a generic operator that can be used to implement nearly <span>*</span> any operator you can imagine.
+The `then` operator is a generic operator that can be used to implement nearly any operator you can imagine.
 
 It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has access to two methods: `emit()` to emit items to an output channel, and `done()` to ignore any remaining source items.
 
@@ -106,7 +127,9 @@ Available options:
 
 - `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
 
-<span>*</span> Multiple inputs are not supported. Operators with multiple inputs tend to be more complex and not amenable to abstraction. If you need to implement such an operator, you can implement it the "conventional" way in a plugin.
+Limitations:
+
+- Multiple inputs are not supported. Operators with multiple inputs tend to be more complex and not amenable to abstraction. If you need to implement such an operator, you can implement it the "conventional" way in a plugin.
 
 ## Development
 
