@@ -1,7 +1,6 @@
 
 include { exec ; mergeCsv } from 'plugin/nf-boost'
 
-
 workflow {
   Channel.of( 1..10 )
     .map { i -> ['id': i, 'name': "record_${i}"] }
