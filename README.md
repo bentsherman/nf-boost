@@ -12,6 +12,8 @@ Currently includes the following features:
 
 - automatic deletion of temporary files (`boost.cleanup`)
 
+- `exec` operator for creating an inline native (i.e. `exec`) process
+
 - `mergeCsv` function for saving records to a CSV file
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
