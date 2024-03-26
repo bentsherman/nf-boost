@@ -50,10 +50,35 @@ def boostCollect(ch) {
   )
 }
 
+def boostDistinct(ch) {
+  def first = true
+  def prev
+  ch.then { it ->
+    if( first ) {
+      first = false
+      emit(it)
+    }
+    else if( it != prev )
+      emit(it)
+    prev = it
+  }
+}
+
 def boostFilter(ch, Closure predicate) {
   ch.then { it ->
     if( predicate(it) )
       emit(it)
+  }
+}
+
+def boostFirst(ch) {
+  def first = true
+  ch.then(singleton: true) { it ->
+    if( !first )
+      return
+    emit(it)
+    first = false
+    done()
   }
 }
 
@@ -78,6 +103,17 @@ def boostIfEmpty(ch, value) {
       if( empty )
         emit(value)
     }
+  )
+}
+
+def boostLast(ch) {
+  def last
+  ch.then(
+    singleton: true,
+    onNext: { it ->
+      last = it
+    },
+    onComplete: { emit(last) }
   )
 }
 
@@ -130,17 +166,13 @@ def boostTake(ch, int n) {
   }
 }
 
-def boostUnique(ch) {
-  def result = []
-  ch.then(
-    onNext: { it ->
-      if( it !in result )
-        result << it
-    },
-    onComplete: {
-      result.each( v -> emit(v) )
-    }
-  )
+def boostUntil(ch, Closure predicate) {
+  ch.then { it ->
+    if( predicate(it) )
+      done()
+    else
+      emit(it)
+  }
 }
 
 def parseQueueValues( queue ) {
@@ -191,9 +223,18 @@ workflow {
   boostCollect(ch)
     .dump(tag: 'collect')
 
+  // distinct
+  ch_rev = ch | collect | flatMap { it.reverse() }
+  boostDistinct(ch.concat(ch_rev))
+    .dump(tag: 'distinct')
+
   // filter
   boostFilter(ch) { it > 5 }
     .dump(tag: 'filter')
+
+  // first
+  boostFirst(ch)
+    .dump(tag: 'first')
 
   // flatMap
   boostFlatMap(ch) { [it] * it }
@@ -202,6 +243,10 @@ workflow {
   // ifEmpty
   boostIfEmpty(ch, 'foo')
     .dump(tag: 'ifEmpty')
+
+  // last
+  boostLast(ch)
+    .dump(tag: 'last')
 
   // map
   boostMap(ch) { it * 2 }
@@ -235,10 +280,10 @@ workflow {
     .dump(tag: 'scan')
 
   // take
-  boostTake(ch, 0)
+  boostTake(ch, 3)
     .dump(tag: 'take')
 
-  // unique
-  boostUnique(ch.flatMap { [it] * it })
-    .dump(tag: 'unique')
+  // until
+  boostUntil(ch, { it == 7 })
+    .dump(tag: 'until')
 }
