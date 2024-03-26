@@ -99,6 +99,18 @@ Available options:
 
 ### Operators
 
+**`exec( name, body )`**
+
+The `exec` operator creates and invokes an inline native (i.e. `exec`) process with the given name, as well as a closure which corresponds to the `exec:` section of a native process.
+
+The inline process can be configured from the config file like any other process, including the use of process selectors (i.e. `withName`).
+
+Limitations:
+
+- Inline process directives are not supported yet.
+
+- The inline exec body should accept a single value and return a single value. Multiple inputs/outputs are not supported yet.
+
 **`scan( [seed], accumulator )`**
 
 The `scan` operator is similar to `reduce` -- it applies an accumulator function sequentially to each value in a channel -- however, whereas `reduce` only emits the final result, `scan` emits each partially accumulated value.
