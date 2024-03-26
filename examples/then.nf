@@ -199,23 +199,15 @@ def boostMultiMap(ch, List<MultiMapCriteria> criteria) {
   }
 }
 
-def boostReduce(ch, seed, Closure accumulator) {
+def boostReduce(ch, seed=null, Closure accumulator) {
   def result = seed
   ch.then(
     singleton: true,
     onNext: { val ->
-      result = accumulator(result, val)
+      result = result == null ? val : accumulator(result, val)
     },
     onComplete: { emit(result) }
   )
-}
-
-def boostScan(ch, seed, Closure accumulator) {
-  def result = seed
-  ch.then { val ->
-    result = accumulator(result, val)
-    emit(result)
-  }
 }
 
 def boostTake(ch, int n) {
@@ -424,12 +416,8 @@ workflow {
   ch_multi.mul3.dump(tag: 'multiMap:mul3')
 
   // reduce
-  boostReduce(ch, 0) { acc, v -> acc + v }
+  boostReduce(ch) { acc, v -> acc + v }
     .dump(tag: 'reduce')
-
-  // scan
-  boostScan(ch, 0) { acc, v -> acc + v }
-    .dump(tag: 'scan')
 
   // take
   boostTake(ch, 3)

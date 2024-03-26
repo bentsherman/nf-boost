@@ -16,6 +16,8 @@ Currently includes the following features:
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
 
+- `scan` operator for, well, scan operations
+
 - `then` and `thenMany` operators for defining custom operators in your pipeline
 
 ## Getting Started
@@ -97,6 +99,10 @@ Available options:
 
 ### Operators
 
+**`scan( [seed], accumulator )`**
+
+The `scan` operator is similar to `reduce` -- it applies an accumulator function sequentially to each value in a channel -- however, whereas `reduce` only emits the final result, `scan` emits each partially accumulated value.
+
 **`then( onNext, [opts] )`**
 
 **`then( opts )`**
@@ -119,9 +125,9 @@ Available options:
 
 - `emits`: List of output channel names when using `thenMany`. Whereas `then` emits a single channel, `thenMany` emits a multi-channel output (similar to processes and workflows) where each output can be accessed by name.
 
-- `onNext`: Closure that is invoked when an item is emitted. Equivalent to providing a closure as the first argument.
+- `onNext`: Closure that is invoked when a value is emitted. Equivalent to providing a closure as the first argument.
 
-- `onComplete`: Closure that is invoked after the last item is emitted by the channel.
+- `onComplete`: Closure that is invoked after the last value is emitted by the channel.
 
 - `onError`: Closure that is invoked when an exception is raised while handling an `onNext` event. It will not make further calls to `onNext` or `onComplete`. The `onError` method takes as its parameter the `Throwable` that caused the error. By default, the error is logged and the workflow is terminated.
 

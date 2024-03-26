@@ -21,10 +21,13 @@ import java.nio.file.Path
 import groovy.transform.CompileStatic
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import nextflow.Channel
 import nextflow.Session
 import nextflow.boost.ops.ThenOp
 import nextflow.boost.writers.CsvWriter
 import nextflow.boost.writers.TextWriter
+import nextflow.extension.CH
+import nextflow.extension.DataflowHelper
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
@@ -64,6 +67,23 @@ class BoostExtension extends PluginExtensionPoint {
             throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
 
         new TextWriter(opts).apply(items, path)
+    }
+
+    @Operator
+    DataflowWriteChannel scan(DataflowReadChannel source, seed=null, Closure accumulator) {
+        final target = CH.createBy(source)
+        def result = seed
+
+        final onNext = { val ->
+            result = result == null ? val : accumulator(result, val)
+            target << result
+        }
+        final onComplete = {
+            target << Channel.STOP
+        }
+
+        DataflowHelper.subscribeImpl(source, [onNext: onNext, onComplete: onComplete])
+        return target
     }
 
     @Operator
