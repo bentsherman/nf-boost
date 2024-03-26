@@ -50,7 +50,7 @@ class ThenOp {
             ? opts.emits as List<String>
             : List.of(EventDsl.DEFAULT_EMIT_NAME)
 
-        this.dsl = new EventDsl(source, emits, singleton)
+        this.dsl = new EventDsl(emits, singleton)
         for( final key : EVENT_NAMES ) {
             if( !opts.containsKey(key) )
                 continue
@@ -98,7 +98,7 @@ class ThenOp {
 
         private boolean stopped = false
 
-        EventDsl(DataflowReadChannel source, List<String> emits, boolean singleton) {
+        EventDsl(List<String> emits, boolean singleton) {
             for( def emit : emits ) {
                 targets.put(emit, CH.create(singleton))
                 emitted.put(emit, false)

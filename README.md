@@ -90,11 +90,9 @@ Available options:
 
 **`thenMany( emits: <emits>, opts )`**
 
-The `then` operator is a generic operator that can be used to implement (nearly) any operator you can imagine.
+The `then` operator is a generic operator that can be used to implement nearly <span>*</span> any operator you can imagine.
 
 It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). However, each event handler has access to two methods: `emit()` to emit items to an output channel, and `done()` to ignore any remaining source items.
-
-*NOTE: multiple input channels are not currently supported*
 
 Available options:
 
@@ -107,6 +105,8 @@ Available options:
 - `onError`: Closure that is invoked when an exception is raised while handling an `onNext` event. It will not make further calls to `onNext` or `onComplete`. The `onError` method takes as its parameter the `Throwable` that caused the error. By default, the error is logged and the workflow is terminated.
 
 - `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
+
+<span>*</span> Multiple inputs are not supported. Operators with multiple inputs tend to be more complex and not amenable to abstraction. If you need to implement such an operator, you can implement it the "conventional" way in a plugin.
 
 ## Development
 
