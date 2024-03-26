@@ -35,7 +35,7 @@ boost {
 This plugin hasn't been published to the main registry yet, so you'll also need to specify the following environment variable so that Nextflow can find the plugin:
 
 ```bash
-export NXF_PLUGINS_TEST_REPOSITORY="https://github.com/bentsherman/nf-boost/releases/download/0.1.0/nf-boost-0.1.0-meta.json"
+export NXF_PLUGINS_TEST_REPOSITORY="https://github.com/bentsherman/nf-boost/releases/download/0.2.0/nf-boost-0.2.0-meta.json"
 ```
 
 The plugin requires Nextflow version `23.10.0` or later.
