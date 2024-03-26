@@ -7,11 +7,12 @@ process RECORD_TO_CSV {
   val record
 
   output:
-  tuple val(record.id), path("record.${record.id}.txt")
+  tuple val(meta), path("record.${record.id}.txt")
 
   exec:
   def path = task.workDir.resolve("record.${record.id}.txt")
   mergeCsv([ record ], path, header: true, sep: '\t')
+  meta = [id: record.id, type: record.type]
 }
 
 
@@ -30,13 +31,59 @@ process ITEMS_TO_TXT {
 }
 
 
-workflow {
+process GROUPS_TO_TXT {
+  publishDir 'results'
+
+  input:
+  tuple val(group), val(items)
+
+  output:
+  path "items.${group}.txt"
+
+  exec:
+  def path = task.workDir.resolve("items.${group}.txt")
+  mergeText(items, path, keepHeader: true)
+}
+
+
+def makeRecord(int i) {
+  final id = String.format('%02d', i)
+  return [
+    id: id,
+    type: i % 2 == 0 ? 'even' : 'odd',
+    name: "record_${id}"
+  ]
+}
+
+
+workflow MERGE_TEXT {
   Channel.of( 1..10 )
-    | map { i -> String.format('%02d', i) }
-    | map { id -> ['id': id, 'name': "record_${id}"] }
+    | map { i -> makeRecord(i) }
     | RECORD_TO_CSV
-    | toSortedList { a, b -> a[0] <=> b[0] }
-    | map { items -> items.collect((id, csv) -> csv) }
+    | map { meta, csv -> csv }
+    | collect
     | ITEMS_TO_TXT
     | view { it.text }
+}
+
+
+workflow GROUP_SORT_MERGE_TEXT {
+  Channel.of( 1..10 )
+    | map { i -> makeRecord(i) }
+    | RECORD_TO_CSV
+    | map { meta, csv -> [meta.type, [meta, csv]] }
+    | groupTuple
+    | map { group, items ->
+      final sorted = items
+        .sort { item -> item[0].id }
+        .collect { meta, csv -> csv }
+      return [group, sorted]
+    }
+    | GROUPS_TO_TXT
+    | view { it.text }
+}
+
+
+workflow {
+  MERGE_TEXT()
 }
