@@ -9,10 +9,10 @@ class BranchCriteria {
 
 def boostBranch(ch, List<BranchCriteria> criteria) {
   final names = criteria.collect( c -> c.name )
-  ch.thenMany(emits: names) { it ->
+  ch.thenMany(emits: names) { val ->
     for( def c : criteria )
-      if( c.predicate(it) )
-        emit(c.name, it)
+      if( c.predicate(val) )
+        emit(c.name, val)
   }
 }
 
@@ -22,8 +22,8 @@ def boostBuffer(ch, int size, boolean remainder = false) {
 
   def buffer = []
   ch.then(
-    onNext: { it ->
-      buffer << it
+    onNext: { val ->
+      buffer << val
       if( buffer.size() == size ) {
         emit(buffer)
         buffer = []
@@ -40,8 +40,8 @@ def boostCollect(ch) {
   final result = []
   ch.then(
     singleton: true,
-    onNext: { it ->
-      result << it
+    onNext: { val ->
+      result << val
     },
     onComplete: {
       if( result )
@@ -53,40 +53,40 @@ def boostCollect(ch) {
 def boostDistinct(ch) {
   def first = true
   def prev
-  ch.then { it ->
+  ch.then { val ->
     if( first ) {
       first = false
-      emit(it)
+      emit(val)
     }
-    else if( it != prev )
-      emit(it)
-    prev = it
+    else if( val != prev )
+      emit(val)
+    prev = val
   }
 }
 
 def boostFilter(ch, Closure predicate) {
-  ch.then { it ->
-    if( predicate(it) )
-      emit(it)
+  ch.then { val ->
+    if( predicate(val) )
+      emit(val)
   }
 }
 
 def boostFirst(ch) {
   def first = true
-  ch.then(singleton: true) { it ->
+  ch.then(singleton: true) { val ->
     if( !first )
       return
-    emit(it)
+    emit(val)
     first = false
     done()
   }
 }
 
 def boostFlatMap(ch, Closure mapper) {
-  ch.then(singleton: false) { it ->
-    final result = mapper != null ? mapper(it) : it
+  ch.then(singleton: false) { val ->
+    final result = mapper != null ? mapper(val) : val
     if( result instanceof Collection )
-      result.each( v -> emit(v) )
+      result.each( el -> emit(el) )
     else
       emit(result)
   }
@@ -157,8 +157,8 @@ def boostGroupTuple(Map opts = [:], ch) {
 def boostIfEmpty(ch, value) {
   def empty = true
   ch.then(
-    onNext: { it ->
-      emit(it)
+    onNext: { val ->
+      emit(val)
       empty = false
     },
     onComplete: {
@@ -172,16 +172,16 @@ def boostLast(ch) {
   def last
   ch.then(
     singleton: true,
-    onNext: { it ->
-      last = it
+    onNext: { val ->
+      last = val
     },
     onComplete: { emit(last) }
   )
 }
 
 def boostMap(ch, Closure mapper) {
-  ch.then { it ->
-    emit(mapper(it))
+  ch.then { val ->
+    emit(mapper(val))
   }
 }
 
@@ -193,9 +193,9 @@ class MultiMapCriteria {
 
 def boostMultiMap(ch, List<MultiMapCriteria> criteria) {
   final names = criteria.collect( c -> c.name )
-  ch.thenMany(emits: names) { it ->
+  ch.thenMany(emits: names) { val ->
     for( def c : criteria )
-      emit(c.name, c.transform(it))
+      emit(c.name, c.transform(val))
   }
 }
 
@@ -203,8 +203,8 @@ def boostReduce(ch, seed, Closure accumulator) {
   def result = seed
   ch.then(
     singleton: true,
-    onNext: { it ->
-      result = accumulator(result, it)
+    onNext: { val ->
+      result = accumulator(result, val)
     },
     onComplete: { emit(result) }
   )
@@ -212,17 +212,17 @@ def boostReduce(ch, seed, Closure accumulator) {
 
 def boostScan(ch, seed, Closure accumulator) {
   def result = seed
-  ch.then { it ->
-    result = accumulator(result, it)
+  ch.then { val ->
+    result = accumulator(result, val)
     emit(result)
   }
 }
 
 def boostTake(ch, int n) {
   def count = 0
-  ch.then(singleton: false) { it ->
+  ch.then(singleton: false) { val ->
     if( n != 0 )
-      emit(it)
+      emit(val)
     if( n >= 0 && ++count >= n )
       done()
   }
@@ -276,11 +276,11 @@ def boostTranspose(ch, by = null, boolean remainder = false) {
 }
 
 def boostUntil(ch, Closure predicate) {
-  ch.then { it ->
-    if( predicate(it) )
+  ch.then { val ->
+    if( predicate(val) )
       done()
     else
-      emit(it)
+      emit(val)
   }
 }
 
@@ -294,12 +294,12 @@ def boostWindow(ch, int size, int step, boolean remainder = true) {
   def index = 0
   ch.then(
     singleton: false,
-    onNext: { it ->
+    onNext: { val ->
       index += 1
       if( index % step == 0 )
         windows << []
 
-      windows.each { window -> window << it }
+      windows.each { window -> window << val }
 
       final window = windows.head()
       if( window.size() == size ) {
@@ -309,7 +309,7 @@ def boostWindow(ch, int size, int step, boolean remainder = true) {
     },
     onComplete: {
       if( remainder && windows.size() > 0 )
-        windows.each { emit(it) }
+        windows.each { window -> emit(window) }
     }
   )
 }
@@ -345,16 +345,16 @@ workflow {
 
   // branch
   ch_branch = boostBranch(ch, [
-      new BranchCriteria('div1', { it % 1 == 0 }),
-      new BranchCriteria('div2', { it % 2 == 0 }),
-      new BranchCriteria('div3', { it % 3 == 0 }),
+      new BranchCriteria('div1', v -> v % 1 == 0 ),
+      new BranchCriteria('div2', v -> v % 2 == 0 ),
+      new BranchCriteria('div3', v -> v % 3 == 0 ),
     ])
 
   Channel.empty()
     .mix(
-      ch_branch.div1.map { "div1: ${it}" },
-      ch_branch.div2.map { "div2: ${it}" },
-      ch_branch.div3.map { "div3: ${it}" }
+      ch_branch.div1.map { v -> "div1: ${v}" },
+      ch_branch.div2.map { v -> "div2: ${v}" },
+      ch_branch.div3.map { v -> "div3: ${v}" }
     )
     .dump(tag: 'branch')
 
@@ -371,12 +371,12 @@ workflow {
     .dump(tag: 'collect')
 
   // distinct
-  ch_rev = ch | collect | flatMap { it.reverse() }
+  ch_rev = ch | collect | flatMap { v -> v.reverse() }
   boostDistinct(ch.concat(ch_rev))
     .dump(tag: 'distinct')
 
   // filter
-  boostFilter(ch) { it > 5 }
+  boostFilter(ch) { v -> v > 5 }
     .dump(tag: 'filter')
 
   // first
@@ -401,21 +401,21 @@ workflow {
     .dump(tag: 'last')
 
   // map
-  boostMap(ch) { it * 2 }
+  boostMap(ch) { v -> v * 2 }
     .dump(tag: 'map')
 
   // multiMap
   ch_multi = boostMultiMap(ch, [
-      new MultiMapCriteria('mul1', { it * 1 }),
-      new MultiMapCriteria('mul2', { it * 2 }),
-      new MultiMapCriteria('mul3', { it * 3 }),
+      new MultiMapCriteria('mul1', v -> v * 1 ),
+      new MultiMapCriteria('mul2', v -> v * 2 ),
+      new MultiMapCriteria('mul3', v -> v * 3 ),
     ])
 
   Channel.empty()
     .mix(
-      ch_multi.mul1.map { "mul1: ${it}" },
-      ch_multi.mul2.map { "mul2: ${it}" },
-      ch_multi.mul3.map { "mul3: ${it}" }
+      ch_multi.mul1.map { v -> "mul1: ${v}" },
+      ch_multi.mul2.map { v -> "mul2: ${v}" },
+      ch_multi.mul3.map { v -> "mul3: ${v}" }
     )
     .dump(tag: 'multiMap')
 
