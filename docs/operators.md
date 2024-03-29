@@ -5,7 +5,7 @@ This document investigates how some operators can be derived from other operator
 
 ## 0th-order
 
-The `then` operator (provided by this plugin) is a sort of "0th-order" operator because it can be used to implement any operator (except for those with multiple inputs).
+The `then` operator (provided by this plugin) is a sort of "0th-order" operator because it can be used to implement any operator.
 
 ## 1st-order
 
@@ -167,9 +167,13 @@ Operators that could be phased out:
 - `collate`: remove first variant in favor of `buffer`, rename second variant to `window`
 
 - `combine`, `cross`: collapse to `cross`, which should:
-  - accept channel or collection inputs
-  - select pairs with matching key only if `by` option is specified (can be integer or closure)
-  - not flatten output, use `flatMap` instead
+  - accept channel or collection inputs (`combine`)
+  - select pairs with matching key only if `by` option is specified (can be integer or closure) (`combine`)
+  - not flatten output, use `flatMap` instead (`cross`)
+
+- `set`, `tap`: collapse to `set`, which should:
+  - assign source channel to single variable (`set`)
+  - forward the source channel (`tap`)
 
 Operators that could be simplified:
 

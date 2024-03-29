@@ -50,6 +50,91 @@ def boostCollect(ch) {
   )
 }
 
+def boostConcat(ch, others) {
+  final n = others.size() + 1
+  final buffers = (1..n).collect( i -> [] )
+  final completed = (1..n).collect( i -> false )
+  def current = 0
+  ch.then(
+    *others,
+    singleton: false,
+    onNext: { val, i ->
+      if( current == i )
+        emit(val)
+      else
+        buffers[i] << val
+    },
+    onComplete: { i ->
+      completed[i] = true
+      while( current < n && completed[current] ) {
+        current += 1
+        buffers[current].each { val -> emit(val) }
+      }
+      if( current == n )
+        done()
+    }
+  )
+}
+
+def boostCross(Map opts = [:], left, right) {
+  if( opts.by != null && opts.by !instanceof Integer && opts.by !instanceof List<Integer> )
+    error "cross `by` parameter must be an integer or list of integers: '${opts.by}'"
+
+  final pivot = opts.by != null
+    ? opts.by instanceof List ? opts.by : [ opts.by ]
+    : null
+
+  final leftValues = [:]
+  final rightValues = [:]
+  def count = 2
+  left.then(
+    right,
+    onNext: { val, i ->
+      def keys
+      def values
+      if( !pivot ) {
+        keys = []
+        values = [val]
+      }
+      else if( val !instanceof List ) {
+        if( pivot != [0] )
+          error "In `cross` operator -- expected a list but received: ${val} [${val.class.simpleName}]"
+        keys = [val]
+        values = []
+      }
+      else {
+        keys = []
+        values = []
+        for( def k : 0..<val.size() ) {
+          if( k in pivot )
+            keys << val[k]
+          else
+            values << val[k]
+        }
+      }
+
+      if( keys !in leftValues )
+        leftValues[keys] = []
+      if( keys !in rightValues )
+        rightValues[keys] = []
+
+      if( i == 0 ) {
+        rightValues[keys].each { rval -> emit( [*keys, *values, *rval] ) }
+        leftValues[keys] << values
+      }
+      else if( i == 1 ) {
+        leftValues[keys].each { lval -> emit( [*keys, *lval, *values] ) }
+        rightValues[keys] << values
+      }
+    },
+    onComplete: { i ->
+      count -= 1
+      if( count == 0 )
+        done()
+    }
+  )
+}
+
 def boostDistinct(ch) {
   def first = true
   def prev
@@ -113,7 +198,7 @@ def boostGroupTuple(Map opts = [:], ch) {
     singleton: false,
     onNext: { val ->
       if( val !instanceof List )
-        error "In `groupTuple` operatoer -- expected a tuple but received: ${val} [${val.class.simpleName}]"
+        error "In `groupTuple` operator -- expected a tuple but received: ${val} [${val.class.simpleName}]"
 
       final tuple = (List)val
       final key = tuple[indices]
@@ -185,6 +270,41 @@ def boostMap(ch, Closure mapper) {
   }
 }
 
+def boostMerge(ch, others) {
+  // TODO: need to mark singleton channels so that they aren't consumed
+  def count = others.size() + 1
+  final buffers = (1..count).collect { i -> [] }
+  ch.then(
+    *others,
+    onNext: { val, i ->
+      buffers[i] << val
+      if( buffers.every { buf -> buf.size() > 0 } )
+        emit( buffers.collect { buf -> buf.pop() } )
+    },
+    onComplete: { i ->
+      count -= 1
+      if( count == 0 )
+        done()
+    }
+  )
+}
+
+def boostMix(ch, others) {
+  def count = others.size() + 1
+  ch.then(
+    *others,
+    singleton: false,
+    onNext: { val, i ->
+      emit(val)
+    },
+    onComplete: { i ->
+      count -= 1
+      if( count == 0 )
+        done()
+    }
+  )
+}
+
 @ValueObject
 class MultiMapCriteria {
   String name
@@ -227,7 +347,7 @@ def boostTranspose(ch, by = null, boolean remainder = false) {
 
   ch.then(singleton: false) { val ->
     if( val !instanceof List )
-      error "In `transpose` operatoer -- expected a tuple but received: ${val} [${val.class.simpleName}]"
+      error "In `transpose` operator -- expected a tuple but received: ${val} [${val.class.simpleName}]"
 
     final tuple = (List)val
     cols.eachWithIndex { col, i ->
@@ -362,6 +482,25 @@ workflow {
   boostCollect(ch)
     .dump(tag: 'collect')
 
+  // concat
+  ch1 = ch
+  ch2 = ch
+  ch3 = ch
+  boostConcat(ch1, [ch2, ch3])
+    .dump(tag: 'concat')
+
+  // cross
+  ch_left = ch
+  ch_right = ch
+  boostCross(ch_left, ch_right)
+    .dump(tag: 'cross')
+
+  // cross (by)
+  ch_left = ch.map { v -> [v, v.toString()] }
+  ch_right = ch.map { v -> [v, v.toString() * asInteger(v)] }
+  boostCross(ch_left, ch_right, by: 0)
+    .dump(tag: 'cross-by')
+
   // distinct
   ch_rev = ch | collect | flatMap { v -> v.reverse() }
   boostDistinct(ch.concat(ch_rev))
@@ -395,6 +534,20 @@ workflow {
   // map
   boostMap(ch) { v -> v * 2 }
     .dump(tag: 'map')
+
+  // merge
+  ch1 = ch
+  ch2 = ch
+  ch3 = Channel.value('foo')
+  boostMerge(ch1, [ch2, ch3])
+    .dump(tag: 'merge')
+
+  // mix
+  ch1 = ch
+  ch2 = ch
+  ch3 = ch
+  boostMix(ch1, [ch2, ch3])
+    .dump(tag: 'mix')
 
   // multiMap
   ch_multi = boostMultiMap(ch, [

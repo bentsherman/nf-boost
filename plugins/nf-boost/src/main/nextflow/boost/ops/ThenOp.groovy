@@ -16,10 +16,12 @@
 
 package nextflow.boost.ops
 
+import java.util.concurrent.locks.Lock
+import java.util.concurrent.locks.ReentrantLock
+
 import groovy.transform.CompileStatic
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
-import groovyx.gpars.dataflow.expression.DataflowExpression
 import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Channel
 import nextflow.extension.CH
@@ -31,7 +33,7 @@ class ThenOp {
 
     private static final List<String> EVENT_NAMES = List.of('onNext', 'onComplete', 'onError')
 
-    private DataflowReadChannel source
+    private List<DataflowReadChannel> sources
 
     private Map<String,Closure> handlers = [:]
 
@@ -39,12 +41,18 @@ class ThenOp {
 
     private EventDsl dsl
 
+    private Lock sync = new ReentrantLock()
+
     ThenOp(DataflowReadChannel source, Map opts) {
-        this.source = source
+        this(List.of(source), opts)
+    }
+
+    ThenOp(List<DataflowReadChannel> sources, Map opts) {
+        this.sources = sources
 
         this.singleton = opts.singleton != null
             ? opts.singleton as boolean
-            : CH.isValue(source)
+            : sources.size() == 1 && CH.isValue(sources.first())
 
         final emits = opts.emits != null
             ? opts.emits as List<String>
@@ -66,18 +74,46 @@ class ThenOp {
 
             handlers[key] = cl
         }
-
-        final onComplete = handlers.onComplete
-        handlers.onComplete = { DataflowProcessor proc ->
-            if( onComplete )
-                onComplete.call(proc)
-            dsl.done()
-        }
     }
 
     ThenOp apply() {
-        DataflowHelper.subscribeImpl(source, handlers)
+        for( int i = 0; i < sources.size(); i++ )
+            DataflowHelper.subscribeImpl(sources[i], eventsMap(handlers, i))
         return this
+    }
+
+    private Map<String,Closure> eventsMap(Map<String,Closure> handlers, int i) {
+        if( sources.size() == 1 ) {
+            // call done() automatically as convenience when there is only one source
+            final result = new LinkedHashMap<String,Closure>(handlers)
+
+            final onComplete = result.onComplete
+            result.onComplete = { DataflowProcessor proc ->
+                if( onComplete )
+                    onComplete.call()
+                dsl.done()
+            }
+
+            return result
+        }
+        else {
+            // synchronize events when there are multiple sources
+            final result = new LinkedHashMap<String,Closure>(handlers)
+
+            final onNext = result.onNext
+            result.onNext = { value ->
+                if( onNext )
+                    sync.withLock { onNext.call(value, i) }
+            }
+
+            final onComplete = result.onComplete
+            result.onComplete = { DataflowProcessor proc ->
+                if( onComplete )
+                    sync.withLock { onComplete.call(i) }
+            }
+
+            return result
+        }
     }
 
     DataflowWriteChannel getOutput() {

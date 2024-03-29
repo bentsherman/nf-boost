@@ -123,11 +123,11 @@ The `scan` operator is similar to `reduce` -- it applies an accumulator function
 
 **`then( onNext, [opts] )`**
 
-**`then( opts )`**
+**`then( [others...], opts )`**
 
 **`thenMany( onNext, emits: <emits>, [opts] )`**
 
-**`thenMany( emits: <emits>, opts )`**
+**`thenMany( [others...], emits: <emits>, opts )`**
 
 The `then` operator is a generic operator that can be used to implement nearly any operator you can imagine.
 
@@ -139,21 +139,21 @@ It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (s
 
 - `done()`: signal that no more values will be emitted
 
+When there is only one source channel, the `done()` method will be called automatically when the source channel sends the `onComplete` event. You can still call it manually, e.g. to finalize the output earlier. When there are multiple source channels, you are responsible for calling `done()` at the appropriate time -- if you don't call it, your operator will wait forever.
+
+When there are multiple source channels, `onNext` and `onComplete` events are *synchronized*. This way, you don't need to worry about making your event handlers thread-safe, because they will be invoked on one event at a time.
+
 Available options:
 
 - `emits`: List of output channel names when using `thenMany`. Whereas `then` emits a single channel, `thenMany` emits a multi-channel output (similar to processes and workflows) where each output can be accessed by name.
 
-- `onNext`: Closure that is invoked when a value is emitted. Equivalent to providing a closure as the first argument.
+- `onNext( value, [i] )`: Closure that is invoked when a value is emitted by a source channel. Equivalent to providing a closure as the first argument. When there are multiple source channels, the closure is invoked with a second argument corresponding to the index of the source channel.
 
-- `onComplete`: Closure that is invoked after the last value is emitted by the channel.
+- `onComplete( [i] )`: Closure that is invoked after the last value is emitted by a source channel. When there are multiple source channels, the closure is invoked with the index of the source channel.
 
-- `onError`: Closure that is invoked when an exception is raised while handling an `onNext` event. It will not make further calls to `onNext` or `onComplete`. The `onError` method takes as its parameter the `Throwable` that caused the error. By default, the error is logged and the workflow is terminated.
+- `onError( error )`: Closure that is invoked when an exception is raised while handling an `onNext` event. It is invoked the exception that caused the error. No further calls will be made to `onNext` or `onComplete` after this event. By default, the error is logged and the workflow is terminated.
 
 - `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
-
-Limitations:
-
-- Multiple inputs are not supported. Operators with multiple inputs tend to be more complex and not amenable to abstraction. If you need to implement such an operator, you can implement it the "conventional" way in a plugin.
 
 ## Development
 
