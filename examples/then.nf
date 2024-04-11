@@ -253,6 +253,61 @@ def boostIfEmpty(ch, value) {
   )
 }
 
+def boostJoin(Map opts = [:], left, right) {
+  if( opts.by != null && opts.by !instanceof Integer && opts.by !instanceof List<Integer> )
+    error "join `by` parameter must be an integer or list of integers: '${opts.by}'"
+
+  final pivot = opts.by != null
+    ? opts.by instanceof List ? opts.by : [ opts.by ]
+    : [0]
+  final failOnRemainder = opts.failOnRemainder ?: false
+
+  final state = [:] // Map< keys , Map<index, values> >
+  def count = 2
+  left.then(
+    right,
+    onNext: { val, i ->
+      if( val !instanceof List )
+        error "In `join` operator -- expected a list but received: ${val} [${val.class.simpleName}]"
+      final tuple = (List)val
+      final keys = []
+      final values = []
+      for( final k : 0..<tuple.size() ) {
+        if( k in pivot )
+          keys << tuple[k]
+        else
+          values << tuple[k]
+      }
+
+      if( !state.containsKey(keys) )
+        state[keys] = [:]
+
+      final buffers = state[keys]
+      if( buffers.containsKey(i) )
+        error "In `join` operator -- ${i == 0 ? 'left' : 'right'} channel received multiple values with the same key: ${keys}"
+
+      buffers[i] = values
+
+      if( buffers.size() == 2 )
+        emit( [*keys, *buffers[0], *buffers[1]] )
+    },
+    onComplete: { i ->
+      count -= 1
+      if( count == 0 ) {
+        if( failOnRemainder ) {
+          for( final entry : state ) {
+            final keys = entry.key
+            final buffers = entry.value
+            if( buffers.size() == 1 )
+              error "In `join` operator -- received value with unmatched key: ${keys}"
+          }
+        }
+        done()
+      }
+    }
+  )
+}
+
 def boostLast(ch) {
   def last
   ch.then(
@@ -526,6 +581,12 @@ workflow {
   // ifEmpty
   boostIfEmpty(ch, 'foo')
     .dump(tag: 'ifEmpty')
+
+  // join
+  ch_left = ch.map { v -> [v, v.toString()] }
+  ch_right = ch.map { v -> [v, v.toString() * asInteger(v)] }
+  boostJoin(ch_left, ch_right)
+    .dump(tag: 'join')
 
   // last
   boostLast(ch)
