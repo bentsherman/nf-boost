@@ -26,6 +26,7 @@ import java.util.concurrent.locks.ReentrantLock
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
 import groovy.util.logging.Slf4j
+import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
 import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
@@ -39,7 +40,8 @@ import nextflow.processor.TaskRun
 import nextflow.trace.TraceObserver
 import nextflow.trace.TraceRecord
 import nextflow.script.params.FileOutParam
-import nextflow.util.ThreadPoolManager
+import nextflow.script.params.OutParam
+import nextflow.script.params.TupleOutParam
 /**
  * Delete temporary files once they are no longer needed.
  *
@@ -53,22 +55,19 @@ class CleanupObserver implements TraceObserver {
 
     private Map<String,ProcessState> processes = [:]
 
-    private Map<TaskRun,TaskState> tasks = [:]
-
     private Map<Path,PathState> paths = [:]
+
+    private Set<TaskRun> completedTasks = []
 
     private Set<Path> publishedOutputs = []
 
     private Lock sync = new ReentrantLock()
 
-    private ExecutorService threadPool
+    // TODO: process events in separate thread
 
     @Override
     void onFlowCreate(Session session) {
         this.session = session
-        this.threadPool = new ThreadPoolManager('TaskCleanup')
-            .withConfig(session.config)
-            .create()
 
         if( session.resumeMode )
             log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
@@ -81,44 +80,62 @@ class CleanupObserver implements TraceObserver {
     @Override
     void onFlowBegin() {
 
-        // construct process lookup
-        final dag = session.dag
-        final withIncludeInputs = [] as Set
+        // prpeare lookup tables
+        final Map<DAG.Vertex,List<DAG.Vertex>> successors = [:]
+        final Map<DataflowWriteChannel,List<DAG.Edge>> edgeLookup = [:]
+        for( def edge : session.dag.edges ) {
+            // lookup vertex -> successor vertices
+            if( edge.from !in successors )
+                successors[edge.from] = []
+            successors[edge.from] << edge.to
 
-        for( def processNode : dag.vertices ) {
+            // lookup channel -> edges
+            if( edge.channel !instanceof DataflowWriteChannel )
+                continue
+            final ch = (DataflowWriteChannel)edge.channel
+            if( ch !in edgeLookup )
+                edgeLookup[ch] = []
+            edgeLookup[ch] << edge
+        }
+
+        // construct process lookup
+        final Set<Tuple2<String,Integer>> withForwardedInputs = []
+
+        for( def vertex : session.dag.vertices ) {
             // skip nodes that are not processes
-            final process = processNode.process
-            if( !process )
+            final process = vertex.process
+            if( process == null )
                 continue
 
-            // find all downstream processes in the abstract dag
-            def processName = process.name
-            def consumers = [] as Set
-            def queue = [ processNode ]
+            // get the set of consuming processes for each process output
+            final outputs = process.config.getOutputs()
+            final List<Set<String>> consumers = outputs.collect { [] as Set }
 
-            while( !queue.isEmpty() ) {
-                // remove a node from the search queue
-                final sourceNode = queue.remove(0)
+            for( int i = 0; i < outputs.size(); i++ ) {
+                final param = outputs[i]
+                final ch = param.getOutChannel()
+                final queue = edgeLookup[ch].collect { edge -> edge.to }
+                while( !queue.isEmpty() ) {
+                    // search each outgoing edge from the output channel
+                    final w = queue.remove(0)
 
-                // search each outgoing edge from the source node
-                for( def edge : dag.edges ) {
-                    if( edge.from != sourceNode )
+                    // skip if node is terminal
+                    if( !w )
                         continue
-
-                    def node = edge.to
-
-                    // skip if process is terminal
-                    if( !node )
-                        continue
-
-                    // add process nodes to the list of consumers
-                    if( node.process != null )
-                        consumers << node.process.name
                     // add operator nodes to the queue to keep searching
+                    if( w.process == null )
+                        queue.addAll( successors[w] )
+                    // add process nodes to the list of consumers
                     else
-                        queue << node
+                        consumers[i] << w.process.name
                 }
+
+                // check if output may forward input files
+                if( hasForwardedInputs(param) )
+                    withForwardedInputs << new Tuple2(process.name, i)
             }
+
+            processes[process.name] = new ProcessState(consumers)
 
             // add event listener for process close
             process.operator.addDataflowEventListener(new DataflowEventAdapter() {
@@ -127,32 +144,46 @@ class CleanupObserver implements TraceObserver {
                     onProcessClose(process)
                 }
             })
-
-            processes[processName] = new ProcessState(consumers ?: [processName] as Set)
-
-            // check if process uses includeInputs
-            final hasIncludeInputs = process
-                .config.getOutputs()
-                .any( p -> p instanceof FileOutParam && p.includeInputs )
-
-            if( hasIncludeInputs )
-                withIncludeInputs << processName
         }
 
-        // update producers of processes that use includeInputs
+        // if a process B receives files from process A and forwards them
+        // as outputs to process C, then process C must be marked as a
+        // consumer of process A even if there is no direct dependency
         processes.each { processName, processState ->
-            final consumers = processState.consumers
-            for( def consumer : consumers.intersect(withIncludeInputs) ) {
-                log.trace "Process `${consumer}` uses includeInputs, adding its consumers to `${processName}`"
-                final consumerState = processes[consumer]
-                consumers.addAll(consumerState.consumers)
-            }
+            // append indirect consumers for each process output
+            for( int i = 0; i < processState.consumers.size(); i++ ) {
+                final consumers = processState.consumers[i]
+                for( final pair : withForwardedInputs ) {
+                    final consumerName = pair.first
+                    final j = pair.second
+                    if( consumerName in consumers ) {
+                        log.trace "Process output `${consumerName}/${j+1}` may forward output files, marking its consumers as indirect consumers of `${processName}/${i+1}`"
+                        consumers.addAll(processes[consumerName].consumers[j])
+                    }
+                }
 
-            log.trace "Process `${processName}` is consumed by the following processes: ${consumers}"
+                log.trace "Process output `${processName}/${i+1}` is consumed by the following processes: ${processState.consumers[i]}"
+            }
         }
     }
 
-    static private final Set<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
+    /**
+     * Determine whether a process output may forward input files
+     * as outputs.
+     *
+     * TODO: check if a non-glob file output matches a file from this process output
+     *
+     * @param param
+     */
+    private boolean hasForwardedInputs(OutParam param) {
+        if( param instanceof FileOutParam && param.includeInputs )
+            return true
+        if( param instanceof TupleOutParam )
+            return param.inner.any( p -> p instanceof FileOutParam && p.includeInputs )
+        return false
+    }
+
+    static private final List<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
 
     /**
      * Log warning for any process that uses any incompatible features.
@@ -169,8 +200,7 @@ class CleanupObserver implements TraceObserver {
     }
 
     /**
-     * When a task is created, add it to the state map and add it as a consumer
-     * of any upstream tasks and output files.
+     * When a task is created, mark it as a consumer of its input files.
      *
      * @param handler
      * @param trace
@@ -182,18 +212,10 @@ class CleanupObserver implements TraceObserver {
         final inputs = task.getInputFilesMap().values()
 
         sync.withLock {
-            // add task to the task state map
-            tasks[task] = new TaskState()
-
-            // add task as consumer of each upstream task and output file
-            for( Path path : inputs ) {
-                if( path in paths ) {
-                    final pathState = paths[path]
-                    final taskState = tasks[pathState.task]
-                    taskState.consumers << task
-                    pathState.consumers << task
-                }
-            }
+            // mark task as consumer of each input file
+            for( Path path : inputs )
+                if( path in paths )
+                    paths[path].consumerTasks << task
         }
     }
 
@@ -218,43 +240,76 @@ class CleanupObserver implements TraceObserver {
         final outputs = task
             .getOutputsByType(FileOutParam)
             .values()
-            .flatten() as List<Path>
+            .flatten() as Set<Path>
 
-        // get publish outputs
+        // get process consumers for each file
+        final processConsumersMap = getProcessConsumers(task, outputs)
+
+        // get publishable outputs
         final publishers = task.config.getPublishDir()
-        final publishOutputs = outputs.findAll( output ->
-            publishers.any( publisher -> canPublish(publisher, task, output) )
+        final publishableOutputs = outputs.findAll( output ->
+            publishers.any( publisher -> isPublishable(publisher, task, output) )
         )
 
-        log.trace "[${task.name}] will publish the following files: ${publishOutputs*.toUriString()}"
+        log.trace "[${task.name}] the following files may be published: ${publishableOutputs*.toUriString()}"
 
         sync.withLock {
             // mark task as completed
-            tasks[task].completed = true
+            completedTasks << task
 
-            // remove any outputs have already been published
-            final alreadyPublished = publishedOutputs.intersect(publishOutputs)
+            // remove any outputs that have already been published
+            final alreadyPublished = publishedOutputs.intersect(publishableOutputs)
             publishedOutputs.removeAll(alreadyPublished)
-            publishOutputs.removeAll(alreadyPublished)
+            publishableOutputs.removeAll(alreadyPublished)
 
-            // add publish outputs to wait on
-            tasks[task].publishOutputs = publishOutputs as Set<Path>
-
-            // scan tasks for cleanup
+            // scan files for cleanup
             cleanup0()
 
             // add each output file to the path state map
             for( Path path : outputs ) {
-                final pathState = new PathState(task)
-                if( path !in publishOutputs )
+                final pathState = new PathState(task, processConsumersMap[path])
+                if( path !in publishableOutputs )
                     pathState.published = true
 
+                log.trace "File ${path} may be consumed by the following processes: ${processConsumersMap[path]}"
                 paths[path] = pathState
             }
         }
     }
 
-    private boolean canPublish(PublishDir publisher, TaskRun task, Path source) {
+    /**
+     * Determine the set of process consumers for each output file
+     * of a task based on the output channels that emitted the file.
+     *
+     * @param task
+     * @param outputs
+     */
+    private Map<Path,Set<String>> getProcessConsumers(TaskRun task, Set<Path> outputs) {
+        final Map<Path,Set<String>> result = outputs.inject([:]) { acc, path ->
+            acc[path] = [] as Set
+            acc
+        }
+        final processState = processes[task.processor.name]
+
+        for( final entry : task.getOutputsByType(FileOutParam) ) {
+            final param = entry.key
+            final consumers = processState.consumers[param.index]
+            final value = entry.value
+            if( value instanceof Path )
+                result[value].addAll(consumers)
+            else if( value instanceof Collection<Path> )
+                value.each { el -> result[el].addAll(consumers) }
+            else
+                throw new IllegalArgumentException("Unknown output file object [${value.class.name}]: ${value}")
+        }
+
+        return result
+    }
+
+    private boolean isPublishable(PublishDir publisher, TaskRun task, Path source) {
+        if( !publisher.enabled )
+            return false
+
         def target = task.targetDir.relativize(source)
 
         if( publisher.pattern ) {
@@ -278,18 +333,20 @@ class CleanupObserver implements TraceObserver {
      * When a task fails, mark it as completed without tracking its
      * output files or triggering a cleanup.
      *
+     * TODO: wait for retried task to be pending
+     *
      * @param task
      */
-    void handleTaskFailure(TaskRun task) {
+    private void handleTaskFailure(TaskRun task) {
         sync.withLock {
             // mark task as completed
-            tasks[task].completed = true
+            completedTasks << task
         }
     }
 
     /**
-     * When a file is published, mark it as published and check
-     * the corresponding task for cleanup.
+     * When a file is published, mark it as published and delete
+     * it if it is no longer needed.
      *
      * If the file is published before the corresponding task is
      * marked as completed, save it for later.
@@ -302,19 +359,16 @@ class CleanupObserver implements TraceObserver {
         sync.withLock {
             // get the corresponding task
             final pathState = paths[source]
-            if( pathState ) {
+            if( pathState != null ) {
                 final task = pathState.task
 
                 log.trace "File ${source.toUriString()} was published by task <${task.name}>"
 
                 // mark file as published
-                tasks[task].publishOutputs.remove(source)
                 pathState.published = true
 
-                // delete task if it can be deleted
-                if( canDeleteTask(task) )
-                    deleteTask(task)
-                else if( canDeleteFile(source) )
+                // delete file if it can be deleted
+                if( canDeleteFile(source) )
                     deleteFile(source)
             }
             else {
@@ -328,7 +382,11 @@ class CleanupObserver implements TraceObserver {
 
     /**
      * When a process is closed (all tasks of the process have been created),
-     * mark the process as closed and scan tasks for cleanup.
+     * mark the process as closed and scan files for cleanup.
+     *
+     * NOTE: a process may submit additional tasks after it is closed, if a
+     * task fails and is retried. The retried task should be marked as pending
+     * before the failed task is marked as completed.
      *
      * @param process
      */
@@ -340,69 +398,12 @@ class CleanupObserver implements TraceObserver {
     }
 
     /**
-     * When the workflow completes, delete all task directories (only
-     * when using the 'lazy' strategy).
-     */
-    @Override
-    void onFlowComplete() {
-        threadPool.shutdown()
-    }
-
-    /**
-     * Delete any task directories and output files that can be deleted.
+     * Delete any output files that can be deleted.
      */
     private void cleanup0() {
-        for( TaskRun task : tasks.keySet() )
-            if( canDeleteTask(task) )
-                deleteTask(task)
-
         for( Path path : paths.keySet() )
             if( canDeleteFile(path) )
                 deleteFile(path)
-    }
-
-    /**
-     * Determine whether a task directory can be deleted.
-     *
-     * A task directory can be deleted if:
-     * - the task has completed
-     * - the task directory hasn't already been deleted
-     * - all of its publish outputs have been published
-     * - all of its process consumers are closed
-     * - all of its task consumers are completed
-     *
-     * @param task
-     */
-    private boolean canDeleteTask(TaskRun task) {
-        final taskState = tasks[task]
-        final processState = processes[task.processor.name]
-
-        taskState.completed
-            && !taskState.deleted
-            && taskState.publishOutputs.isEmpty()
-            && processState.consumers.every( p -> processes[p].closed )
-            && taskState.consumers.every( t -> tasks[t].completed )
-    }
-
-    /**
-     * Delete a task directory.
-     *
-     * @param task
-     */
-    private void deleteTask(TaskRun task) {
-        log.trace "[${task.name}] Deleting task directory: ${task.workDir.toUriString()}"
-
-        // delete task
-        threadPool.submit({
-            try {
-                FileHelper.deletePath(task.workDir)
-            }
-            catch( Exception e ) {}
-        } as Runnable)
-
-        // mark task as deleted
-        final taskState = tasks[task]
-        taskState.deleted = true
     }
 
     /**
@@ -418,12 +419,11 @@ class CleanupObserver implements TraceObserver {
      */
     private boolean canDeleteFile(Path path) {
         final pathState = paths[path]
-        final processState = processes[pathState.task.processor.name]
 
         pathState.published
             && !pathState.deleted
-            && processState.consumers.every( p -> processes[p].closed )
-            && pathState.consumers.every( t -> tasks[t].completed )
+            && pathState.consumerProcesses.every( p -> processes[p].closed )
+            && pathState.consumerTasks.every( t -> t in completedTasks )
     }
 
     /**
@@ -435,37 +435,30 @@ class CleanupObserver implements TraceObserver {
         final pathState = paths[path]
         final task = pathState.task
 
-        if( !tasks[task].deleted ) {
-            log.trace "[${task.name}] Deleting file: ${path.toUriString()}"
-            FileHelper.deletePath(path)
-        }
+        log.trace "[${task.name}] Deleting file: ${path.toUriString()}"
+        FileHelper.deletePath(path)
         pathState.deleted = true
     }
 
     static private class ProcessState {
-        Set<String> consumers
+        List<Set<String>> consumers
         boolean closed = false
 
-        ProcessState(Set<String> consumers) {
+        ProcessState(List<Set<String>> consumers) {
             this.consumers = consumers
         }
     }
 
-    static private class TaskState {
-        Set<TaskRun> consumers = []
-        Set<Path> publishOutputs = []
-        boolean completed = false
-        boolean deleted = false
-    }
-
     static private class PathState {
         TaskRun task
-        Set<TaskRun> consumers = []
+        Set<String> consumerProcesses
+        Set<TaskRun> consumerTasks = []
         boolean deleted = false
         boolean published = false
 
-        PathState(TaskRun task) {
+        PathState(TaskRun task, Set<String> consumerProcesses) {
             this.task = task
+            this.consumerProcesses = consumerProcesses
         }
     }
 
