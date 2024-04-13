@@ -19,12 +19,13 @@ package nextflow.boost.cleanup
 import java.nio.file.FileSystem
 import java.nio.file.Path
 import java.nio.file.PathMatcher
-import java.util.concurrent.ExecutorService
+import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 
 import groovy.transform.CompileStatic
 import groovy.transform.Memoized
+import groovy.transform.TupleConstructor
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
@@ -42,6 +43,8 @@ import nextflow.trace.TraceRecord
 import nextflow.script.params.FileOutParam
 import nextflow.script.params.OutParam
 import nextflow.script.params.TupleOutParam
+import nextflow.util.Duration
+import nextflow.util.Threads
 /**
  * Delete temporary files once they are no longer needed.
  *
@@ -50,6 +53,8 @@ import nextflow.script.params.TupleOutParam
 @Slf4j
 @CompileStatic
 class CleanupObserver implements TraceObserver {
+
+    static private final Duration DEF_CLEANUP_INTERVAL = Duration.of('5s')
 
     private Session session
 
@@ -61,16 +66,35 @@ class CleanupObserver implements TraceObserver {
 
     private Set<Path> publishedOutputs = []
 
-    private Lock sync = new ReentrantLock()
+    private Lock eventLock = new ReentrantLock()
 
-    // TODO: process events in separate thread
+    private LinkedBlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>()
+
+    private long delayMillis = 5000
 
     @Override
     void onFlowCreate(Session session) {
         this.session = session
+        this.delayMillis = (session.config.navigate('boost.cleanupInterval', DEF_CLEANUP_INTERVAL) as Duration).toMillis()
 
         if( session.resumeMode )
             log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
+    }
+
+    static private final List<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
+
+    /**
+     * Log warning for any process that uses any incompatible features.
+     *
+     * @param process
+     */
+    void onProcessCreate( TaskProcessor process ) {
+        // check for incompatible publish modes
+        final task = process.createTaskPreview()
+        final publishers = task.config.getPublishDir()
+
+        if( publishers.any( p -> p.mode in INVALID_PUBLISH_MODES ) )
+            log.warn "Process `${process.name}` is publishing files as symlinks, which may be invalidated by automatic cleanup -- consider using 'copy' or 'link' instead"
     }
 
     /**
@@ -162,7 +186,20 @@ class CleanupObserver implements TraceObserver {
                     }
                 }
 
-                log.trace "Process output `${processName}/${i+1}` is consumed by the following processes: ${processState.consumers[i]}"
+                log.trace "Process output `${processName}/${i+1}` is used by the following processes: ${processState.consumers[i]}"
+            }
+        }
+
+        // launch thread to handle workflow events and cleanup
+        Threads.start('Task cleanup') {
+            try {
+                while( true ) {
+                    handleEvents()
+                    Thread.sleep(delayMillis)
+                }
+            }
+            catch( Throwable e ) {
+                log.debug "Unexpected error in cleanup observer", e
             }
         }
     }
@@ -183,20 +220,42 @@ class CleanupObserver implements TraceObserver {
         return false
     }
 
-    static private final List<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
-
     /**
-     * Log warning for any process that uses any incompatible features.
-     *
-     * @param process
+     * Process workflow events and cleanup.
      */
-    void onProcessCreate( TaskProcessor process ) {
-        // check for incompatible publish modes
-        final task = process.createTaskPreview()
-        final publishers = task.config.getPublishDir()
+    private void handleEvents() {
+        // remove all events from the queue
+        final List<Event> events = []
 
-        if( publishers.any( p -> p.mode in INVALID_PUBLISH_MODES ) )
-            log.warn "Process `${process.name}` is publishing files as symlinks, which may be invalidated by automatic cleanup -- consider using 'copy' or 'link' instead"
+        eventLock.withLock {
+            eventQueue.drainTo(events)
+        }
+
+        log.trace "Processing ${events.size()} workflow events"
+
+        // process each event
+        boolean cleanup = false
+        for( final event : events ) {
+            if( event instanceof Event.TaskPending ) {
+                onTaskPending0(event.task)
+            }
+            else if( event instanceof Event.TaskCompleted ) {
+                cleanup |= onTaskComplete0(event.task)
+            }
+            else if( event instanceof Event.FilePublished ) {
+                onFilePublish0(event.path)
+            }
+            else if( event instanceof Event.ProcessClosed ) {
+                onProcessClose0(event.process)
+                cleanup = true
+            }
+        }
+
+        // scan for cleanup if needed
+        if( cleanup ) {
+            log.trace "Scanning for cleanup"
+            cleanup0()
+        }
     }
 
     /**
@@ -207,16 +266,17 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onProcessPending(TaskHandler handler, TraceRecord trace) {
-        // query task input files
-        final task = handler.task
-        final inputs = task.getInputFilesMap().values()
-
-        sync.withLock {
-            // mark task as consumer of each input file
-            for( Path path : inputs )
-                if( path in paths )
-                    paths[path].consumerTasks << task
+        eventLock.withLock {
+            eventQueue << new Event.TaskPending(handler.task)
         }
+    }
+
+    private void onTaskPending0(TaskRun task) {
+        // mark task as consumer of each input file
+        final inputs = task.getInputFilesMap().values()
+        for( Path path : inputs )
+            if( path in paths )
+                paths[path].consumerTasks << task
     }
 
     /**
@@ -228,12 +288,17 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onProcessComplete(TaskHandler handler, TraceRecord trace) {
-        final task = handler.task
+        eventLock.withLock {
+            eventQueue << new Event.TaskCompleted(handler.task)
+        }
+    }
 
-        // handle failed tasks separately
+    private boolean onTaskComplete0(TaskRun task) {
+        // mark failed task as completed without scanning for cleanup
+        // TODO: wait for retried task to be pending first
         if( !task.isSuccess() ) {
-            handleTaskFailure(task)
-            return
+            completedTasks << task
+            return false
         }
 
         // query task output files
@@ -253,28 +318,25 @@ class CleanupObserver implements TraceObserver {
 
         log.trace "[${task.name}] the following files may be published: ${publishableOutputs*.toUriString()}"
 
-        sync.withLock {
-            // mark task as completed
-            completedTasks << task
+        // mark task as completed
+        completedTasks << task
 
-            // remove any outputs that have already been published
-            final alreadyPublished = publishedOutputs.intersect(publishableOutputs)
-            publishedOutputs.removeAll(alreadyPublished)
-            publishableOutputs.removeAll(alreadyPublished)
+        // remove any outputs that have already been published
+        final alreadyPublished = publishedOutputs.intersect(publishableOutputs)
+        publishedOutputs.removeAll(alreadyPublished)
+        publishableOutputs.removeAll(alreadyPublished)
 
-            // scan files for cleanup
-            cleanup0()
+        // add each output file to the path state map
+        for( Path path : outputs ) {
+            final pathState = new PathState(task, processConsumersMap[path])
+            if( path !in publishableOutputs )
+                pathState.published = true
 
-            // add each output file to the path state map
-            for( Path path : outputs ) {
-                final pathState = new PathState(task, processConsumersMap[path])
-                if( path !in publishableOutputs )
-                    pathState.published = true
-
-                log.trace "File ${path} may be consumed by the following processes: ${processConsumersMap[path]}"
-                paths[path] = pathState
-            }
+            log.trace "File ${path} may be used by the following processes: ${processConsumersMap[path]}"
+            paths[path] = pathState
         }
+
+        return true
     }
 
     /**
@@ -330,21 +392,6 @@ class CleanupObserver implements TraceObserver {
     }
 
     /**
-     * When a task fails, mark it as completed without tracking its
-     * output files or triggering a cleanup.
-     *
-     * TODO: wait for retried task to be pending
-     *
-     * @param task
-     */
-    private void handleTaskFailure(TaskRun task) {
-        sync.withLock {
-            // mark task as completed
-            completedTasks << task
-        }
-    }
-
-    /**
      * When a file is published, mark it as published and delete
      * it if it is no longer needed.
      *
@@ -356,27 +403,31 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFilePublish(Path destination, Path source) {
-        sync.withLock {
-            // get the corresponding task
-            final pathState = paths[source]
-            if( pathState != null ) {
-                final task = pathState.task
+        eventLock.withLock {
+            eventQueue << new Event.FilePublished(source)
+        }
+    }
 
-                log.trace "File ${source.toUriString()} was published by task <${task.name}>"
+    private void onFilePublish0(Path path) {
+        // get the corresponding task
+        final pathState = paths[path]
+        if( pathState != null ) {
+            final task = pathState.task
 
-                // mark file as published
-                pathState.published = true
+            log.trace "File ${path.toUriString()} was published by task <${task.name}>"
 
-                // delete file if it can be deleted
-                if( canDeleteFile(source) )
-                    deleteFile(source)
-            }
-            else {
-                log.trace "File ${source.toUriString()} was published before task was marked as completed"
+            // mark file as published
+            pathState.published = true
 
-                // save file to be processed when task completes
-                publishedOutputs << source
-            }
+            // delete file if it can be deleted
+            if( canDeleteFile(path) )
+                deleteFile(path)
+        }
+        else {
+            log.trace "File ${path.toUriString()} was published before task was marked as completed"
+
+            // save file to be processed when task completes
+            publishedOutputs << path
         }
     }
 
@@ -391,14 +442,25 @@ class CleanupObserver implements TraceObserver {
      * @param process
      */
     void onProcessClose(TaskProcessor process) {
-        sync.withLock {
-            processes[process.name].closed = true
-            cleanup0()
+        eventLock.withLock {
+            eventQueue << new Event.ProcessClosed(process)
         }
     }
 
+    private void onProcessClose0(TaskProcessor process) {
+        processes[process.name].closed = true
+    }
+
     /**
-     * Delete any output files that can be deleted.
+     * Process any remaining events and cleanup when the workflow is done.
+     */
+    @Override
+    void onFlowComplete() {
+        handleEvents()
+    }
+
+    /**
+     * Delete any files that can be deleted.
      */
     private void cleanup0() {
         for( Path path : paths.keySet() )
@@ -459,6 +521,25 @@ class CleanupObserver implements TraceObserver {
         PathState(TaskRun task, Set<String> consumerProcesses) {
             this.task = task
             this.consumerProcesses = consumerProcesses
+        }
+    }
+
+    static private interface Event {
+        @TupleConstructor
+        static class TaskPending implements Event {
+            TaskRun task
+        }
+        @TupleConstructor
+        static class TaskCompleted implements Event {
+            TaskRun task
+        }
+        @TupleConstructor
+        static class FilePublished implements Event {
+            Path path
+        }
+        @TupleConstructor
+        static class ProcessClosed implements Event {
+            TaskProcessor process
         }
     }
 

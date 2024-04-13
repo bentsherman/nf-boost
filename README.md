@@ -75,6 +75,10 @@ Limitations:
 
   - The `collectFile` operator can be replaced with `mergeText` (in this plugin) in a native process. See the `examples` directory for example usage.
 
+**`boost.cleanupInterval`**
+
+Specify how often to scan for cleanup (default: `'5s'`).
+
 ### Functions
 
 **`mergeCsv( records, path, [opts] )`**
