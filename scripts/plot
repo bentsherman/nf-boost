@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+
+import argparse
+import matplotlib.pyplot as plt
+import os
+import pandas as pd
+
+
+def load(file_path):
+    with open(file_path, 'r') as f:
+        x = pd.Series([int(line.strip()) for line in f])
+    return x
+
+
+if __name__ == '__main__':
+    # parse command-line arguments
+    parser = argparse.ArgumentParser()
+    parser.add_argument('inputs', help='input dataset', nargs='+')
+    parser.add_argument('outfile', help='output plot')
+
+    args = parser.parse_args()
+
+    # load dataframes
+    ys = [load(csv) for csv in args.inputs]
+    ys = pd.concat(ys, axis='columns').ffill()
+
+    # plot time series
+    for i in ys:
+        label = os.path.splitext(os.path.basename(args.inputs[i]))[0]
+        plt.plot(ys[i] / (1 << 20), label=label)
+
+    plt.xlabel('time (s)')
+    plt.ylabel('disk usage (MB)')
+    plt.ylim(bottom=0)
+    plt.legend()
+
+    # save output figure
+    plt.savefig(args.outfile)
+    plt.close()

@@ -1,0 +1,25 @@
+#!/bin/bash
+# Track the disk usage of the work directory during a pipeline run.
+
+DIR=${DIR:-'work'}
+CMD=${CMD:-'nextflow run examples/cleanup.nf'}
+OUTFILE=${1:-'disk-usage.txt'}
+
+watch() {
+    echo "> $CMD"
+
+    rm -rf "$DIR" DONE
+
+    ($CMD ; touch DONE ) &
+
+    while [[ ! -f DONE ]]; do
+        [[ -d "$DIR" ]] && echo "disk usage: $(du -bs "$DIR")"
+        sleep 1
+    done
+
+    rm -f DONE
+}
+
+watch \
+| tee >(grep 'disk usage:' | awk '{ print $3 }' > "$OUTFILE") \
+| grep -v 'disk usage:'
