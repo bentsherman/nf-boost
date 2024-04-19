@@ -138,7 +138,7 @@ class CleanupObserver implements TraceObserver {
             for( int i = 0; i < outputs.size(); i++ ) {
                 final param = outputs[i]
                 final ch = param.getOutChannel()
-                final queue = edgeLookup[ch].collect { edge -> edge.to }
+                final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
                 while( !queue.isEmpty() ) {
                     // search each outgoing edge from the output channel
                     final w = queue.remove(0)
