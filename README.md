@@ -38,6 +38,12 @@ boost {
 
 The plugin requires Nextflow version `23.10.0` or later.
 
+If a release hasn't been published to the main registry yet, you can still use it by specifying the following environment variable so that Nextflow can find the plugin:
+
+```bash
+export NXF_PLUGINS_TEST_REPOSITORY="https://github.com/bentsherman/nf-boost/releases/download/0.3.2/nf-boost-0.3.2-meta.json"
+```
+
 ## Examples
 
 Check out the `examples` directory for example pipelines that demonstrate how to use the features in this plugin.
