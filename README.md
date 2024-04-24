@@ -54,9 +54,9 @@ Check out the `examples` directory for example pipelines that demonstrate how to
 
 **`boost.cleanup`**
 
-Set to `true` to enable automatic cleanup (default: `false`).
+Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
 
-Temporary files will be automatically deleted as soon as they are no longer needed. Additionally, each task directory will be deleted as soon as the task outputs are no longer needed.
+The default cleanup observer uses `publishDir` directives to determine whether a file should be published before it is deleted. Setting `boost.cleanup = 'v2'` will use an alternate cleanup observer which uses the new workflow publish definition instead of `publishDir` to track publishing.
 
 Limitations:
 
