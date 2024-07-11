@@ -47,8 +47,8 @@ combining:
 - `branch`
   ```groovy
   ch | branch { /* ... */ } == [
-    label1: ch | filter(cond1),
-    label2: ch | filter(cond2),
+    label1: ch | filter(cond1) | map(mapper1),
+    label2: ch | filter(cond2) | map(mapper2),
     // ...
   ]
   ```
@@ -145,6 +145,8 @@ combining:
 
 Operators that could be phased out:
 
+- `branch`: use `filter` and `map` instead
+
 - `collectFile`: replace with stdlib function `mergeCsv`, `mergeText`
   - use `groupTuple` for grouping
   - use `List::sort` for sorting
@@ -152,6 +154,8 @@ Operators that could be phased out:
 - `countFasta`, `countFastq`, `countJson`, `countLines`: use stdlib functions instead
 
 - `merge`: remove when there is better support for record types
+
+- `multiMap`: use `map` instead
 
 - `randomSample`: replace with stdlib function
 
