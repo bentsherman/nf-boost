@@ -128,7 +128,7 @@ class CleanupObserverV2 implements TraceObserver {
                 final ch = param.getOutChannel()
 
                 // get the set of consuming processes
-                def queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
+                final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
                 while( !queue.isEmpty() ) {
                     final w = queue.remove(0)
                     // skip terminal edges

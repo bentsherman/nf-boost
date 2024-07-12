@@ -38,6 +38,8 @@ boost {
 
 The plugin requires Nextflow version `23.10.0` or later.
 
+*New in version `0.4.0`: requires Nextflow `24.04.0` or later.*
+
 If a release hasn't been published to the main registry yet, you can still use it by specifying the following environment variable so that Nextflow can find the plugin:
 
 ```bash
