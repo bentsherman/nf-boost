@@ -20,6 +20,7 @@ import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.boost.cleanup.CleanupObserver
+import nextflow.boost.cleanup.CleanupObserverV2
 import nextflow.trace.TraceObserver
 import nextflow.trace.TraceObserverFactory
 
@@ -36,8 +37,14 @@ class BoostObserverFactory implements TraceObserverFactory {
     Collection<TraceObserver> create(Session session) {
         List<TraceObserver> result = []
 
-        if( session.config.navigate('boost.cleanup', false) )
+        final cleanup = session.config.navigate('boost.cleanup', false)
+        if( cleanup == true || cleanup == 'v1' )
             result << new CleanupObserver()
+        else if( cleanup == 'v2' )
+            result << new CleanupObserverV2()
+        else if( cleanup != false ) {
+            throw new IllegalArgumentException("Invalid `boost.cleanup` value -- ${cleanup}")
+        }
 
         return result
     }

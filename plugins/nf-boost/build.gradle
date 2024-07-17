@@ -56,7 +56,7 @@ sourceSets {
 
 dependencies {
     // This dependency is exported to consumers, that is to say found on their compile classpath.
-    compileOnly 'io.nextflow:nextflow:23.10.0'
+    compileOnly 'io.nextflow:nextflow:24.04.3'
     compileOnly 'org.slf4j:slf4j-api:1.7.10'
     compileOnly 'org.pf4j:pf4j:3.4.1'
     // add here plugins depepencies
@@ -64,7 +64,7 @@ dependencies {
     // test configuration
     testImplementation "org.codehaus.groovy:groovy:3.0.19"
     testImplementation "org.codehaus.groovy:groovy-nio:3.0.19"
-    testImplementation 'io.nextflow:nextflow:23.10.0'
+    testImplementation 'io.nextflow:nextflow:24.04.3'
     testImplementation ("org.codehaus.groovy:groovy-test:3.0.19") { exclude group: 'org.codehaus.groovy' }
     testImplementation ("cglib:cglib-nodep:3.3.0")
     testImplementation ("org.objenesis:objenesis:3.1")
