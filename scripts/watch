@@ -3,6 +3,7 @@
 
 DIR=${DIR:-'work'}
 CMD=${CMD:-'nextflow run examples/cleanup.nf'}
+WATCH_INTERVAL=${WATCH_INTERVAL:-'1'}
 OUTFILE=${1:-'disk-usage.txt'}
 
 watch() {
@@ -14,7 +15,7 @@ watch() {
 
     while [[ ! -f DONE ]]; do
         [[ -d "$DIR" ]] && echo "disk usage: $(du -bs "$DIR")"
-        sleep 1
+        sleep "$WATCH_INTERVAL"
     done
 
     rm -f DONE
