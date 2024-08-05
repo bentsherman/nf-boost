@@ -54,7 +54,7 @@ import nextflow.util.Threads
 @CompileStatic
 class CleanupObserver implements TraceObserver {
 
-    static private final Duration DEF_CLEANUP_INTERVAL = Duration.of('5s')
+    static private final Duration DEF_CLEANUP_INTERVAL = Duration.of('60s')
 
     private Session session
 

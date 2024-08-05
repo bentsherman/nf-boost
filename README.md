@@ -83,7 +83,7 @@ Limitations:
 
 **`boost.cleanupInterval`**
 
-Specify how often to scan for cleanup (default: `'5s'`).
+Specify how often to scan for cleanup (default: `'60s'`).
 
 ### Functions
 
