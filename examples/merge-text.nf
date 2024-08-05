@@ -47,7 +47,7 @@ process GROUPS_TO_TXT {
 
 
 def makeRecord(int i) {
-  final id = String.format('%02d', i)
+  def id = String.format('%02d', i)
   return [
     id: id,
     type: i % 2 == 0 ? 'even' : 'odd',
@@ -63,7 +63,7 @@ workflow MERGE_TEXT {
     | map { meta, csv -> csv }
     | collect
     | ITEMS_TO_TXT
-    | view { it.text }
+    | view { txt -> txt.text }
 }
 
 
@@ -74,13 +74,13 @@ workflow GROUP_SORT_MERGE_TEXT {
     | map { meta, csv -> [meta.type, [meta, csv]] }
     | groupTuple
     | map { group, items ->
-      final sorted = items
+      def sorted = items
         .sort { item -> item[0].id }
         .collect { meta, csv -> csv }
       return [group, sorted]
     }
     | GROUPS_TO_TXT
-    | view { it.text }
+    | view { txt -> txt.text }
 }
 
 

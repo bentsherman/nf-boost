@@ -8,11 +8,12 @@ class BranchCriteria {
 }
 
 def boostBranch(ch, List<BranchCriteria> criteria) {
-  final names = criteria.collect( c -> c.name )
+  def names = criteria.collect { c -> c.name }
   ch.thenMany(emits: names) { val ->
-    for( def c : criteria )
+    criteria.each { c -> 
       if( c.predicate(val) )
         emit(c.name, val)
+    }
   }
 }
 
@@ -37,7 +38,7 @@ def boostBuffer(ch, int size, boolean remainder = false) {
 }
 
 def boostCollect(ch) {
-  final result = []
+  def result = []
   ch.then(
     singleton: true,
     onNext: { val ->
@@ -51,9 +52,9 @@ def boostCollect(ch) {
 }
 
 def boostConcat(ch, others) {
-  final n = others.size() + 1
-  final buffers = (1..n).collect( i -> [] )
-  final completed = (1..n).collect( i -> false )
+  def n = others.size() + 1
+  def buffers = (1..n).collect { i -> [] }
+  def completed = (1..n).collect { i -> false }
   def current = 0
   ch.then(
     *others,
@@ -77,15 +78,15 @@ def boostConcat(ch, others) {
 }
 
 def boostCross(Map opts = [:], left, right) {
-  if( opts.by != null && opts.by !instanceof Integer && opts.by !instanceof List<Integer> )
+  if( opts.by != null && !(opts.by instanceof Integer) && !(opts.by instanceof List<Integer>) )
     error "cross `by` parameter must be an integer or list of integers: '${opts.by}'"
 
-  final pivot = opts.by != null
+  def pivot = opts.by != null
     ? opts.by instanceof List ? opts.by : [ opts.by ]
     : null
 
-  final leftValues = [:]
-  final rightValues = [:]
+  def leftValues = [:]
+  def rightValues = [:]
   def count = 2
   left.then(
     right,
@@ -96,7 +97,7 @@ def boostCross(Map opts = [:], left, right) {
         keys = []
         values = [val]
       }
-      else if( val !instanceof List ) {
+      else if( !(val instanceof List) ) {
         if( pivot != [0] )
           error "In `cross` operator -- expected a list but received: ${val} [${val.class.simpleName}]"
         keys = [val]
@@ -105,17 +106,17 @@ def boostCross(Map opts = [:], left, right) {
       else {
         keys = []
         values = []
-        for( def k : 0..<val.size() ) {
+        val.eachWithIndex { el, k -> 
           if( k in pivot )
-            keys << val[k]
+            keys << el
           else
-            values << val[k]
+            values << el
         }
       }
 
-      if( keys !in leftValues )
+      if( !(keys in leftValues) )
         leftValues[keys] = []
-      if( keys !in rightValues )
+      if( !(keys in rightValues) )
         rightValues[keys] = []
 
       if( i == 0 ) {
@@ -169,53 +170,53 @@ def boostFirst(ch) {
 
 def boostFlatMap(ch, Closure mapper) {
   ch.then(singleton: false) { val ->
-    final result = mapper != null ? mapper(val) : val
+    def result = mapper != null ? mapper(val) : val
     if( result instanceof Collection )
-      result.each( el -> emit(el) )
+      result.each { el -> emit(el) }
     else
       emit(result)
   }
 }
 
 def boostGroupTuple(Map opts = [:], ch) {
-  final size = opts.size ?: 0
-  final remainder = opts.remainder ?: false
+  def size = opts.size ?: 0
+  def remainder = opts.remainder ?: false
 
   if( size < 0 )
     error 'groupTuple `size` parameter must be non-negative'
 
-  final indices = opts.by == null
+  def indices = opts.by == null
     ? [ 0 ]
     : opts.by instanceof Integer
       ? [ opts.by ]
       : null
 
-  if( indices == null || indices !instanceof List )
+  if( indices == null || !(indices instanceof List) )
     error "groupTuple `by` parameter must be an integer or list of integers: '${opts.by}'"
 
-  final groups = [:]
+  def groups = [:]
   ch.then(
     singleton: false,
     onNext: { val ->
-      if( val !instanceof List )
+      if( !(val instanceof List) )
         error "In `groupTuple` operator -- expected a tuple but received: ${val} [${val.class.simpleName}]"
 
-      final tuple = (List)val
-      final key = tuple[indices]
-      final len = tuple.size()
-      final values = groups.getOrCreate(key) {
+      def tuple = val as List
+      def key = tuple[indices]
+      def len = tuple.size()
+      def values = groups.getOrCreate(key) {
         (0..<len).collect { i ->
           i in indices ? tuple[i] : []
         }
       }
 
       int count = -1
-      for( int i = 0; i < len; i++ ) {
+      len.times { i ->
         if( i in indices )
-          continue
+          return
         if( values[i] == null )
           values[i] = []
-        final list = values[i]
+        def list = values[i]
         list << tuple[i]
         count = list.size()
       }
@@ -228,7 +229,7 @@ def boostGroupTuple(Map opts = [:], ch) {
     onComplete: {
       groups.each { key, values ->
         if( !remainder && size != 0 ) {
-          final list = values.find( v -> v instanceof List )
+          def list = values.find { v -> v instanceof List }
           if( list.size() != size )
             return
         }
@@ -254,35 +255,35 @@ def boostIfEmpty(ch, value) {
 }
 
 def boostJoin(Map opts = [:], left, right) {
-  if( opts.by != null && opts.by !instanceof Integer && opts.by !instanceof List<Integer> )
+  if( opts.by != null && !(opts.by instanceof Integer) && !(opts.by instanceof List<Integer>) )
     error "join `by` parameter must be an integer or list of integers: '${opts.by}'"
 
-  final pivot = opts.by != null
+  def pivot = opts.by != null
     ? opts.by instanceof List ? opts.by : [ opts.by ]
     : [0]
-  final failOnRemainder = opts.failOnRemainder ?: false
+  def failOnRemainder = opts.failOnRemainder ?: false
 
-  final state = [:] // Map< keys , Map<index, values> >
+  def state = [:] // Map< keys , Map<index, values> >
   def count = 2
   left.then(
     right,
     onNext: { val, i ->
-      if( val !instanceof List )
+      if( !(val instanceof List) )
         error "In `join` operator -- expected a list but received: ${val} [${val.class.simpleName}]"
-      final tuple = (List)val
-      final keys = []
-      final values = []
-      for( final k : 0..<tuple.size() ) {
+      def tuple = val as List
+      def keys = []
+      def values = []
+      tuple.eachWithIndex { el, k ->
         if( k in pivot )
-          keys << tuple[k]
+          keys << el
         else
-          values << tuple[k]
+          values << el
       }
 
       if( !state.containsKey(keys) )
         state[keys] = [:]
 
-      final buffers = state[keys]
+      def buffers = state[keys]
       if( buffers.containsKey(i) )
         error "In `join` operator -- ${i == 0 ? 'left' : 'right'} channel received multiple values with the same key: ${keys}"
 
@@ -295,9 +296,9 @@ def boostJoin(Map opts = [:], left, right) {
       count -= 1
       if( count == 0 ) {
         if( failOnRemainder ) {
-          for( final entry : state ) {
-            final keys = entry.key
-            final buffers = entry.value
+          state.each { entry ->
+            def keys = entry.key
+            def buffers = entry.value
             if( buffers.size() == 1 )
               error "In `join` operator -- received value with unmatched key: ${keys}"
           }
@@ -328,7 +329,7 @@ def boostMap(ch, Closure mapper) {
 def boostMerge(ch, others) {
   // TODO: need to mark singleton channels so that they aren't consumed
   def count = others.size() + 1
-  final buffers = (1..count).collect { i -> [] }
+  def buffers = (1..count).collect { i -> [] }
   ch.then(
     *others,
     onNext: { val, i ->
@@ -367,10 +368,11 @@ class MultiMapCriteria {
 }
 
 def boostMultiMap(ch, List<MultiMapCriteria> criteria) {
-  final names = criteria.collect( c -> c.name )
+  def names = criteria.collect { c -> c.name }
   ch.thenMany(emits: names) { val ->
-    for( def c : criteria )
+    criteria.each { c ->
       emit(c.name, c.transform(val))
+    }
   }
 }
 
@@ -396,23 +398,23 @@ def boostTake(ch, int n) {
 }
 
 def boostTranspose(ch, by = null, boolean remainder = false) {
-  final cols = by == null
+  def cols = by == null
     ? []
     : by instanceof List ? by : [by]
 
   ch.then(singleton: false) { val ->
-    if( val !instanceof List )
+    if( !(val instanceof List) )
       error "In `transpose` operator -- expected a tuple but received: ${val} [${val.class.simpleName}]"
 
-    final tuple = (List)val
+    def tuple = val as List
     cols.eachWithIndex { col, i ->
-      final el = tuple[col]
-      if( el !instanceof List )
+      def el = tuple[col]
+      if( !(el instanceof List) )
         error "In `transpose` operator -- expected a list at tuple index ${col} but received: ${el} [${el.class.simpleName}]"
     }
 
-    final indices = cols ?: {
-      final result = []
+    def indices = cols ?: {
+      def result = []
       tuple.eachWithIndex { el, i ->
         if( el instanceof List )
           result << i
@@ -420,13 +422,14 @@ def boostTranspose(ch, by = null, boolean remainder = false) {
       result
     }.call()
 
-    final max = indices.collect(i -> tuple[i].size()).max()
+    def max = indices.collect { i -> tuple[i].size() }.max()
 
-    for( int i : 0..<max ) {
-      final result = []
-      for( int k : 0..<tuple.size() ) {
+    max.times { i ->
+      def result = []
+
+      tuple.eachWithIndex { el, k ->
         if( k in indices ) {
-          final list = tuple[k]
+          def list = el
           if( i < list.size() )
             result[k] = list[i]
           else if( remainder )
@@ -435,7 +438,7 @@ def boostTranspose(ch, by = null, boolean remainder = false) {
             return
         }
         else
-          result[k] = tuple[k]
+          result[k] = el
       }
       emit(result)
     }
@@ -468,7 +471,7 @@ def boostWindow(ch, int size, int step, boolean remainder = true) {
 
       windows.each { window -> window << val }
 
-      final window = windows.head()
+      def window = windows.head()
       if( window.size() == size ) {
         emit(window)
         windows = windows.tail()
@@ -483,7 +486,7 @@ def boostWindow(ch, int size, int step, boolean remainder = true) {
 
 def parseQueueValues(String queue) {
   if( queue.contains('..') ) {
-    final (min, max) = queue.tokenize('..')
+    def (min, max) = queue.tokenize('..')
     return (min as int) .. (max as int)
   }
   else {
@@ -499,11 +502,11 @@ def asInteger( value ) {
   error "cannot coerce value to integer: ${value} [${value.class.simpleName}]"
 }
 
-params.empty = false
-params.value = null
-params.queue = '1..10'
-
 workflow {
+  params.empty = false
+  params.value = null
+  params.queue = '1..10'
+
   ch = params.empty
     ? Channel.empty()
     : params.value
@@ -512,9 +515,9 @@ workflow {
 
   // branch
   ch_branch = boostBranch(ch, [
-      new BranchCriteria('div1', v -> v % 1 == 0 ),
-      new BranchCriteria('div2', v -> v % 2 == 0 ),
-      new BranchCriteria('div3', v -> v % 3 == 0 ),
+      new BranchCriteria('div1', { v -> v % 1 == 0 }),
+      new BranchCriteria('div2', { v -> v % 2 == 0 }),
+      new BranchCriteria('div3', { v -> v % 3 == 0 }),
     ])
 
   Channel.empty()
@@ -612,9 +615,9 @@ workflow {
 
   // multiMap
   ch_multi = boostMultiMap(ch, [
-      new MultiMapCriteria('mul1', v -> v * 1 ),
-      new MultiMapCriteria('mul2', v -> v * 2 ),
-      new MultiMapCriteria('mul3', v -> v * 3 ),
+      new MultiMapCriteria('mul1', { v -> v * 1 }),
+      new MultiMapCriteria('mul2', { v -> v * 2 }),
+      new MultiMapCriteria('mul3', { v -> v * 3 }),
     ])
 
   Channel.empty()
@@ -638,7 +641,7 @@ workflow {
     .dump(tag: 'take')
 
   // transpose
-  ch_grouped = ch.map( v -> [v, 1..v as ArrayList] )
+  ch_grouped = ch.map { v -> [v, 1..v as ArrayList] }
   boostTranspose( ch_grouped.dump(tag: 'transpose') )
     .dump(tag: 'transpose')
 
