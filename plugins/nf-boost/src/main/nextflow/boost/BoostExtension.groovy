@@ -60,6 +60,35 @@ class BoostExtension extends PluginExtensionPoint {
     }
 
     /**
+     * Apply a mapping closure to a source channel. The closure should return an
+     * optional value -- non-empty optionals will be unwrapped and emitted, while
+     * empty optionals will not be emitted.
+     *
+     * @param source
+     * @param mapper
+     */
+    @Operator
+    DataflowWriteChannel filterMap(DataflowReadChannel source, Closure mapper) {
+        final target = CH.createBy(source)
+
+        final onNext = { val ->
+            final result = mapper(val)
+            if( result !instanceof Optional )
+                throw new IllegalArgumentException("In `filterMap` operator -- expected an Optional from mapping closure, but received a ${result.class.simpleName}")
+
+            final opt = (Optional) result
+            if( opt.isPresent() )
+                target << opt.get()
+        }
+        final onComplete = {
+            target << Channel.STOP
+        }
+
+        DataflowHelper.subscribeImpl(source, [onNext: onNext, onComplete: onComplete])
+        return target
+    }
+
+    /**
      * Save a list of records to a CSV file.
      *
      * @param opts

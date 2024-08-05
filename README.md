@@ -14,6 +14,8 @@ Currently includes the following features:
 
 - `exec` operator for creating an inline native (i.e. `exec`) process
 
+- `filterMap` operator for filtering and mapping in a single operation
+
 - `mergeCsv` function for saving records to a CSV file
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
@@ -122,6 +124,10 @@ Limitations:
 - Inline process directives are not supported yet.
 
 - The inline exec body should accept a single value and return a single value. Multiple inputs/outputs are not supported yet.
+
+**`filterMap( mapper )`**
+
+The `filterMap` operator is a combination of `filter` and `map`. It applies a mapping function to each value in a source channel. The mapping function should return an [Optional](https://docs.oracle.com/en/java/javase/11/docs/api/java.base/java/util/Optional.html) -- non-empty optionals are unwrapped and emitted, while empty optionals are not emitted.
 
 **`scan( [seed], accumulator )`**
 
