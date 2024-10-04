@@ -1,8 +1,39 @@
 
 nextflow.preview.output = true
 
-def randomInt() {
-  Math.random() * Integer.MAX_VALUE
+params.bam_count = 10
+params.bam_size = '100M'
+params.sleep_mean = 10
+params.sleep_std = 3
+
+workflow {
+  main:
+  BAM1( Channel.of( 1..params.bam_count ), params.sleep_mean, params.sleep_std, params.bam_size )
+  BAM2(BAM1.out.bam, params.sleep_mean, params.sleep_std)
+  BAM3(BAM2.out.bam, params.sleep_mean, params.sleep_std)
+
+  ch_logs = BAM1.out.log
+    | mix(BAM2.out.log, BAM3.out.log)
+    | collect
+
+  SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
+
+  publish:
+  BAM3.out.bam >> 'bam'
+  SUMMARY.out >> 'summary'
+}
+
+output {
+  directory 'results'
+  mode 'copy'
+
+  'bam' {
+    path '.'
+  }
+
+  'summary' {
+    path '.'
+  }
 }
 
 process BAM1 {
@@ -14,7 +45,7 @@ process BAM1 {
 
   output:
   tuple val(index), path("${index}-1.bam"), emit: bam
-  path "${index}-1.log", emit: log
+  path "${index}-1.log"                   , emit: log
 
   script:
   """
@@ -32,7 +63,7 @@ process BAM2 {
 
   output:
   tuple val(index), path("${index}-2.bam"), emit: bam
-  path "${index}-2.log", emit: log
+  path "${index}-2.log"                   , emit: log
 
   script:
   """
@@ -50,7 +81,7 @@ process BAM3 {
 
   output:
   tuple val(index), path("${index}-3.bam"), emit: bam
-  path "${index}-3.log", emit: log
+  path "${index}-3.log"                   , emit: log
 
   script:
   """
@@ -76,36 +107,6 @@ process SUMMARY {
   """
 }
 
-workflow {
-  main:
-  params.bam_count = 10
-  params.bam_size = '100M'
-  params.sleep_mean = 10
-  params.sleep_std = 3
-
-  BAM1( Channel.of( 1..params.bam_count ), params.sleep_mean, params.sleep_std, params.bam_size )
-  BAM2(BAM1.out.bam, params.sleep_mean, params.sleep_std)
-  BAM3(BAM2.out.bam, params.sleep_mean, params.sleep_std)
-
-  ch_logs = BAM1.out.log
-    | mix(BAM2.out.log, BAM3.out.log)
-    | collect
-
-  SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
-
-  publish:
-  BAM3.out.bam >> 'bam'
-  SUMMARY.out >> 'summary'
-}
-
-output {
-  directory 'results'
-
-  'bam' {
-    path '.'
-  }
-
-  'summary' {
-    path '.'
-  }
+def randomInt() {
+  Math.random() * Integer.MAX_VALUE
 }
