@@ -143,8 +143,10 @@ class CleanupObserverV2 implements TraceObserver {
                 }
 
                 // determine whether the output channel might be published
-                if( ch in session.publishTargets )
+                if( ch in session.publishTargets ) {
+                    log.trace "Process output `${process.name}/${i+1}` might be published"
                     publishable[i] = true
+                }
 
                 // check if output may forward input files
                 if( hasForwardedInputs(param) )
@@ -307,7 +309,7 @@ class CleanupObserverV2 implements TraceObserver {
         // get publishable outputs
         final publishableOutputs = getPublishableOutputs(task, outputs)
 
-        log.trace "[${task.name}] the following files may be published: ${publishableOutputs*.toUriString()}"
+        log.trace "[${task.name}] the following files might be published: ${publishableOutputs*.toUriString()}"
 
         // mark task as completed
         completedTasks << task
@@ -323,7 +325,7 @@ class CleanupObserverV2 implements TraceObserver {
             if( path !in publishableOutputs )
                 pathState.published = true
 
-            log.trace "File ${path} may be used by the following processes: ${processConsumersMap[path]}"
+            log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
             paths[path] = pathState
         }
 
@@ -372,7 +374,8 @@ class CleanupObserverV2 implements TraceObserver {
 
         for( final entry : task.getOutputsByType(FileOutParam) ) {
             final param = entry.key
-            final publishable = processState.publishable[param.index]
+            if( !processState.publishable[param.index] )
+                continue
             final value = entry.value
             if( value instanceof Path )
                 result.add(value)
