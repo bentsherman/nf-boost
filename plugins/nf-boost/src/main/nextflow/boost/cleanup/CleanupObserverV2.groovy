@@ -128,24 +128,36 @@ class CleanupObserverV2 implements TraceObserver {
                 final ch = param.getOutChannel()
 
                 // get the set of consuming processes
-                final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
-                while( !queue.isEmpty() ) {
-                    final w = queue.remove(0)
+                final consumerQueue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
+                while( !consumerQueue.isEmpty() ) {
+                    final w = consumerQueue.remove(0)
                     // skip terminal edges
                     if( !w )
                         continue
                     // add operator nodes to the queue to keep searching
                     if( w.process == null )
-                        queue.addAll( successors[w] )
+                        consumerQueue.addAll( successors[w] )
                     // add process nodes to the list of consumers
                     else
                         consumers[i] << w.process.name
                 }
 
                 // determine whether the output channel might be published
-                if( ch in session.publishTargets ) {
-                    log.trace "Process output `${process.name}/${i+1}` might be published"
-                    publishable[i] = true
+                final publisherQueue = [ ch ]
+                while( !publisherQueue.isEmpty() ) {
+                    final ch0 = publisherQueue.remove(0)
+                    if( ch0 in session.publishTargets ) {
+                        log.trace "Process output `${process.name}/${i+1}` might be published"
+                        publishable[i] = true
+                        break
+                    }
+                    // add operator output channels to the queue to keep searching
+                    edgeLookup.getOrDefault(ch0, []).stream()
+                        .map(edge -> edge.to)
+                        .filter(w -> w != null && w.process == null)
+                        .flatMap(w -> w.operators.stream())
+                        .map(op -> op.getOutputs())
+                        .forEach(publisherQueue::addAll)
                 }
 
                 // check if output may forward input files
