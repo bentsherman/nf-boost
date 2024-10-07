@@ -61,8 +61,6 @@ class CleanupObserver implements TraceObserver {
 
     private Set<Path> publishedOutputs = []
 
-    private Lock eventLock = new ReentrantLock()
-
     private LinkedBlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>()
 
     private long delayMillis = 5000
@@ -226,10 +224,7 @@ class CleanupObserver implements TraceObserver {
     private void handleEvents() {
         // remove all events from the queue
         final List<Event> events = []
-
-        eventLock.withLock {
-            eventQueue.drainTo(events)
-        }
+        eventQueue.drainTo(events)
 
         log.trace "Processing ${events.size()} workflow events"
 
@@ -266,17 +261,16 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onProcessPending(TaskHandler handler, TraceRecord trace) {
-        eventLock.withLock {
-            eventQueue << new Event.TaskPending(handler.task)
-        }
+        eventQueue.put(new Event.TaskPending(handler.task))
     }
 
     private void onTaskPending0(TaskRun task) {
         // mark task as consumer of each input file
         final inputs = task.getInputFilesMap().values()
-        for( Path path : inputs )
+        for( Path path : inputs ) {
             if( path in paths )
                 paths[path].consumerTasks << task
+        }
     }
 
     /**
@@ -288,9 +282,7 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onProcessComplete(TaskHandler handler, TraceRecord trace) {
-        eventLock.withLock {
-            eventQueue << new Event.TaskCompleted(handler.task)
-        }
+        eventQueue.put(new Event.TaskCompleted(handler.task))
     }
 
     private boolean onTaskComplete0(TaskRun task) {
@@ -404,9 +396,7 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFilePublish(Path destination, Path source) {
-        eventLock.withLock {
-            eventQueue << new Event.FilePublished(source)
-        }
+        eventQueue.put(new Event.FilePublished(source))
     }
 
     private void onFilePublish0(Path path) {
@@ -443,9 +433,7 @@ class CleanupObserver implements TraceObserver {
      * @param process
      */
     void onProcessClose(TaskProcessor process) {
-        eventLock.withLock {
-            eventQueue << new Event.ProcessClosed(process)
-        }
+        eventQueue.put(new Event.ProcessClosed(process))
     }
 
     private void onProcessClose0(TaskProcessor process) {
