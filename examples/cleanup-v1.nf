@@ -1,6 +1,4 @@
 
-nextflow.preview.output = true
-
 params.bam_count = 10
 params.bam_size = '100M'
 params.sleep_mean = 10
@@ -17,23 +15,6 @@ workflow {
     | collect
 
   SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
-
-  publish:
-  BAM3.out.bam >> 'bam'
-  SUMMARY.out >> 'summary'
-}
-
-output {
-  directory 'results'
-  mode 'copy'
-
-  'bam' {
-    path '.'
-  }
-
-  'summary' {
-    path '.'
-  }
 }
 
 process BAM1 {
@@ -74,6 +55,8 @@ process BAM2 {
 }
 
 process BAM3 {
+  publishDir 'results'
+
   input:
   tuple val(index), path("${index}-2.bam")
   val sleep_mean
@@ -92,6 +75,8 @@ process BAM3 {
 }
 
 process SUMMARY {
+  publishDir 'results'
+
   input:
   path logs
   val sleep_mean

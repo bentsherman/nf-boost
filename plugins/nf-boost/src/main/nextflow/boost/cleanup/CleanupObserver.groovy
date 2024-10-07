@@ -16,15 +16,12 @@
 
 package nextflow.boost.cleanup
 
-import java.nio.file.FileSystem
 import java.nio.file.Path
-import java.nio.file.PathMatcher
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.locks.Lock
 import java.util.concurrent.locks.ReentrantLock
 
 import groovy.transform.CompileStatic
-import groovy.transform.Memoized
 import groovy.transform.TupleConstructor
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
@@ -33,8 +30,6 @@ import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
 import nextflow.dag.DAG
 import nextflow.file.FileHelper
-import nextflow.processor.PublishDir
-import nextflow.processor.PublishDir.Mode
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
@@ -81,22 +76,6 @@ class CleanupObserver implements TraceObserver {
             log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
     }
 
-    static private final List<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
-
-    /**
-     * Log warning for any process that uses any incompatible features.
-     *
-     * @param process
-     */
-    void onProcessCreate( TaskProcessor process ) {
-        // check for incompatible publish modes
-        final task = process.createTaskPreview()
-        final publishers = task.config.getPublishDir()
-
-        if( publishers.any( p -> p.mode in INVALID_PUBLISH_MODES ) )
-            log.warn "Process `${process.name}` is publishing files as symlinks, which may be invalidated by automatic cleanup -- consider using 'copy' or 'link' instead"
-    }
-
     /**
      * When the workflow begins, determine the consumers of each process
      * in the DAG.
@@ -134,16 +113,17 @@ class CleanupObserver implements TraceObserver {
             // get the set of consuming processes for each process output
             final outputs = process.config.getOutputs()
             final List<Set<String>> consumers = outputs.collect { [] as Set }
+            final List<Boolean> publishable = outputs.collect { false }
 
             for( int i = 0; i < outputs.size(); i++ ) {
                 final param = outputs[i]
                 final ch = param.getOutChannel()
+
+                // get the set of consuming processes
                 final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
                 while( !queue.isEmpty() ) {
-                    // search each outgoing edge from the output channel
                     final w = queue.remove(0)
-
-                    // skip if node is terminal
+                    // skip terminal edges
                     if( !w )
                         continue
                     // add process nodes to the list of consumers
@@ -154,12 +134,30 @@ class CleanupObserver implements TraceObserver {
                         queue.addAll( successors[w] )
                 }
 
+                // determine whether the output channel might be published
+                final publisherQueue = [ ch ]
+                while( !publisherQueue.isEmpty() ) {
+                    final ch0 = publisherQueue.remove(0)
+                    if( ch0 in session.publishTargets ) {
+                        log.trace "Process output `${process.name}/${i+1}` might be published"
+                        publishable[i] = true
+                        break
+                    }
+                    // add operator output channels to the queue to keep searching
+                    edgeLookup.getOrDefault(ch0, []).stream()
+                        .map(edge -> edge.to)
+                        .filter(w -> w != null && w.process == null)
+                        .flatMap(w -> w.operators.stream())
+                        .map(op -> op.getOutputs())
+                        .forEach(publisherQueue::addAll)
+                }
+
                 // check if output may forward input files
                 if( hasForwardedInputs(param) )
                     withForwardedInputs << new Tuple2(process.name, i)
             }
 
-            processes[process.name] = new ProcessState(consumers)
+            processes[process.name] = new ProcessState(consumers, publishable)
 
             // add event listener for process close
             process.operator.addDataflowEventListener(new DataflowEventAdapter() {
@@ -174,7 +172,7 @@ class CleanupObserver implements TraceObserver {
         // as outputs to process C, then process C must be marked as a
         // consumer of process A even if there is no direct dependency
         processes.each { processName, processState ->
-            // append indirect consumers for each process output
+            // append indirect consumers (and publishable) for each process output
             for( int i = 0; i < processState.consumers.size(); i++ ) {
                 final consumers = processState.consumers[i]
                 for( final pair : withForwardedInputs ) {
@@ -182,7 +180,9 @@ class CleanupObserver implements TraceObserver {
                     final j = pair.second
                     if( consumerName in consumers ) {
                         log.trace "Process output `${consumerName}/${j+1}` may forward output files, marking its consumers as indirect consumers of `${processName}/${i+1}`"
-                        consumers.addAll(processes[consumerName].consumers[j])
+                        final consumerState = processes[consumerName]
+                        consumers.addAll(consumerState.consumers[j])
+                        processState.publishable[i] |= consumerState.publishable[j]
                     }
                 }
 
@@ -311,12 +311,9 @@ class CleanupObserver implements TraceObserver {
         final processConsumersMap = getProcessConsumers(task, outputs)
 
         // get publishable outputs
-        final publishers = task.config.getPublishDir()
-        final publishableOutputs = outputs.findAll( output ->
-            publishers.any( publisher -> isPublishable(publisher, task, output) )
-        )
+        final publishableOutputs = getPublishableOutputs(task, outputs)
 
-        log.trace "[${task.name}] the following files may be published: ${publishableOutputs*.toUriString()}"
+        log.trace "[${task.name}] the following files might be published: ${publishableOutputs*.toUriString()}"
 
         // mark task as completed
         completedTasks << task
@@ -332,7 +329,7 @@ class CleanupObserver implements TraceObserver {
             if( path !in publishableOutputs )
                 pathState.published = true
 
-            log.trace "File ${path} may be used by the following processes: ${processConsumersMap[path]}"
+            log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
             paths[path] = pathState
         }
 
@@ -368,27 +365,31 @@ class CleanupObserver implements TraceObserver {
         return result
     }
 
-    private boolean isPublishable(PublishDir publisher, TaskRun task, Path source) {
-        if( !publisher.enabled )
-            return false
+    /**
+     * Determine the set of task outputs that might be published
+     * based on the output channels that emitted each file.
+     *
+     * @param task
+     * @param outputs
+     */
+    protected Set<Path> getPublishableOutputs(TaskRun task, Set<Path> outputs) {
+        final Set<Path> result = []
+        final processState = processes[task.processor.name]
 
-        def target = task.targetDir.relativize(source)
-
-        if( publisher.pattern ) {
-            final matcher = getPathMatcherFor(publisher.pattern, source.fileSystem)
-            if( !matcher.matches(target) )
-                return false
+        for( final entry : task.getOutputsByType(FileOutParam) ) {
+            final param = entry.key
+            if( !processState.publishable[param.index] )
+                continue
+            final value = entry.value
+            if( value instanceof Path )
+                result.add(value)
+            else if( value instanceof Collection<Path> )
+                result.addAll(value)
+            else
+                throw new IllegalArgumentException("Unknown output file object [${value.class.name}]: ${value}")
         }
 
-        if( publisher.saveAs )
-            target = publisher.saveAs.call(target.toString())
-
-        return target != null
-    }
-
-    @Memoized
-    private PathMatcher getPathMatcherFor(String pattern, FileSystem fileSystem) {
-        FileHelper.getPathMatcherFor("glob:${pattern}", fileSystem)
+        return result
     }
 
     /**
@@ -463,9 +464,10 @@ class CleanupObserver implements TraceObserver {
      * Delete any files that can be deleted.
      */
     private void cleanup0() {
-        for( Path path : paths.keySet() )
+        for( Path path : paths.keySet() ) {
             if( canDeleteFile(path) )
                 deleteFile(path)
+        }
     }
 
     /**
@@ -504,10 +506,12 @@ class CleanupObserver implements TraceObserver {
 
     static private class ProcessState {
         List<Set<String>> consumers
+        List<Boolean> publishable
         boolean closed = false
 
-        ProcessState(List<Set<String>> consumers) {
+        ProcessState(List<Set<String>> consumers, List<Boolean> publishable) {
             this.consumers = consumers
+            this.publishable = publishable
         }
     }
 
