@@ -146,12 +146,12 @@ class CleanupObserver implements TraceObserver {
                     // skip if node is terminal
                     if( !w )
                         continue
-                    // add operator nodes to the queue to keep searching
-                    if( w.process == null )
-                        queue.addAll( successors[w] )
                     // add process nodes to the list of consumers
-                    else
+                    if( w.process != null )
                         consumers[i] << w.process.name
+                    // add operator nodes to the queue to keep searching
+                    else if( w in successors )
+                        queue.addAll( successors[w] )
                 }
 
                 // check if output may forward input files
