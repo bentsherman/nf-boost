@@ -64,7 +64,11 @@ Limitations:
 
 - Resume is not supported with automatic cleanup at this time. Deleted tasks will be re-executed on a resumed run. Resume will be supported when this feature is finalized in Nextflow.
 
-- Files created by operators (e.g. `collectFile`, `splitFastq`) cannot be tracked and so will not be deleted. For optimal performance, consider refactoring such operators into processes:
+- Helper files and log files created by Nextflow (e.g. `.command.run`, `.command.log`) are not deleted. Consider using a cleanup policy on the underlying filesystem or object storage to delete these files automatically over time.
+
+- Input files that are staged into the work directory (e.g. from an HTTP/FTP server or S3 bucket) are not deleted.
+
+- Files created by operators (e.g. `collectFile`, `splitFastq`) cannot be tracked and so are not deleted. For optimal performance, consider refactoring such operators into processes:
 
   - Splitter operators such as `splitFastq` can also be used as functions in a native process:
 
