@@ -1,6 +1,6 @@
 Manifest-Version: 1.0
 Plugin-Id: nf-boost
-Plugin-Version: 0.3.2
+Plugin-Version: 0.4.0
 Plugin-Class: nextflow.boost.BoostPlugin
 Plugin-Provider: nextflow
-Plugin-Requires: >=23.10.0
+Plugin-Requires: >=24.04.0
