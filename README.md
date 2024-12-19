@@ -20,6 +20,8 @@ Currently includes the following features:
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
 
+- `request` function for making HTTP requests
+
 - `template` function for rendering templates
 
 - `exec` operator for creating an inline native (i.e. `exec`) process
@@ -136,6 +138,24 @@ Available options:
 - `newLine`: Append a newline character after each entry (default: `false`).
 
 - `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
+
+**`request( url: String, [opts] )`**
+
+Make an HTTP request. Returns the underlying [HttpURLConnection](https://docs.oracle.com/javase/8/docs/api/java/net/HttpURLConnection.html).
+
+Available options:
+
+- `body: String`
+
+  The request body.
+
+- `headers: Map<String,String>`
+
+  Map of request headers.
+
+- `method: String`
+
+  The request method, can be `'get'`, `'post'`, `'head'`, `'options'`, `'put'`, `'delete'`, or `'trace'` (default: `'get'`).
 
 **`template( source: Path | String, binding: Map ) -> String`**
 

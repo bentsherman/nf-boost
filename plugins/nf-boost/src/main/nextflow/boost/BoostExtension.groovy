@@ -116,6 +116,26 @@ class BoostExtension extends PluginExtensionPoint {
     }
 
     /**
+     * Make an HTTP request.
+     */
+    @Function
+    HttpURLConnection request(Map opts=[:], String url) {
+        final method = opts.method as String ?: 'GET'
+        final headers = opts.headers as Map<String,String> ?: [:]
+        final body = opts.body as String ?: null
+        final req = (HttpURLConnection) new URL(url).openConnection()
+        req.setRequestMethod(method.toUpperCase())
+        for( final entry : headers ) {
+            req.setRequestProperty(entry.key, entry.value)
+        }
+        if( body ) {
+            req.setDoOutput(true)
+            req.getOutputStream().write(body.getBytes('UTF-8'))
+        }
+        return req
+    }
+
+    /**
      * Render a template from a file with the given binding.
      *
      * @param file
