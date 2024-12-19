@@ -12,11 +12,15 @@ Currently includes the following features:
 
 - automatic deletion of temporary files (`boost.cleanup`)
 
-- `exec` operator for creating an inline native (i.e. `exec`) process
+- `fromJson` and `toJson` functions to read and write JSON
+
+- `fromYaml` and `toYaml` functions to read and write YAML
 
 - `mergeCsv` function for saving records to a CSV file
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
+
+- `exec` operator for creating an inline native (i.e. `exec`) process
 
 - `scan` operator for, well, scan operations
 
@@ -97,9 +101,17 @@ Specify how often to scan for cleanup (default: `'60s'`).
 
 Load a value from JSON.
 
+**`toJson( value, pretty = false ) -> String`**
+
+Convert a value to JSON.
+
 **`fromYaml( source: Path | String )`**
 
 Load a value from YAML.
+
+**`toYaml( value ) -> String`**
+
+Convert a value to YAML.
 
 **`mergeCsv( records, path, [opts] )`**
 
@@ -122,14 +134,6 @@ Available options:
 - `newLine`: Append a newline character after each entry (default: `false`).
 
 - `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
-
-**`toJson( value, pretty = false ) -> String`**
-
-Convert a value to JSON.
-
-**`toYaml( value ) -> String`**
-
-Convert a value to YAML.
 
 ### Operators
 

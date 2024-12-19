@@ -49,49 +49,7 @@ class BoostExtension extends PluginExtensionPoint {
         this.session = session
     }
 
-    /**
-     * Create and invoke an inline native i.e. `exec` process.
-     *
-     * @param source
-     * @param name
-     * @param body
-     */
-    @Operator
-    DataflowWriteChannel exec(DataflowReadChannel source, String name, Closure body) {
-        final out = new ExecOp(source, session, name, body).apply()
-        // append dummy operation so that the output isn't added to the DAG twice
-        new MapOp( CH.getReadChannel(out), (v) -> v ).apply()
-    }
-
-    /**
-     * Save a list of records to a CSV file.
-     *
-     * @param opts
-     * @param records
-     * @param path
-     */
-    @Function
-    void mergeCsv(Map opts=[:], List records, Path path) {
-        if( records.size() == 0 )
-            throw new IllegalArgumentException('In `mergeCsv` function -- at least one record must be provided')
-
-        new CsvWriter(opts).apply(records, path)
-    }
-
-    /**
-     * Save a list of items to a text file.
-     *
-     * @param opts
-     * @param items
-     * @param path
-     */
-    @Function
-    void mergeText(Map opts=[:], List items, Path path) {
-        if( items.size() == 0 )
-            throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
-
-        new TextWriter(opts).apply(items, path)
-    }
+    /// FUNCTIONS
 
     @Function
     Object fromJson(Path source) {
@@ -124,6 +82,52 @@ class BoostExtension extends PluginExtensionPoint {
     @Function
     String toYaml(Object value) {
         return new Yaml().dump(value)
+    }
+
+    /**
+     * Save a list of records to a CSV file.
+     *
+     * @param opts
+     * @param records
+     * @param path
+     */
+    @Function
+    void mergeCsv(Map opts=[:], List records, Path path) {
+        if( records.size() == 0 )
+            throw new IllegalArgumentException('In `mergeCsv` function -- at least one record must be provided')
+
+        new CsvWriter(opts).apply(records, path)
+    }
+
+    /**
+     * Save a list of items to a text file.
+     *
+     * @param opts
+     * @param items
+     * @param path
+     */
+    @Function
+    void mergeText(Map opts=[:], List items, Path path) {
+        if( items.size() == 0 )
+            throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
+
+        new TextWriter(opts).apply(items, path)
+    }
+
+    /// OPERATORS
+
+    /**
+     * Create and invoke an inline native i.e. `exec` process.
+     *
+     * @param source
+     * @param name
+     * @param body
+     */
+    @Operator
+    DataflowWriteChannel exec(DataflowReadChannel source, String name, Closure body) {
+        final out = new ExecOp(source, session, name, body).apply()
+        // append dummy operation so that the output isn't added to the DAG twice
+        new MapOp( CH.getReadChannel(out), (v) -> v ).apply()
     }
 
     @Operator
