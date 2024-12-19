@@ -135,6 +135,10 @@ Available options:
 
 - `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
 
+**`template( source: Path | String, binding: Map ) -> String`**
+
+Render a template with the given binding.
+
 ### Operators
 
 **`exec( name, body )`**

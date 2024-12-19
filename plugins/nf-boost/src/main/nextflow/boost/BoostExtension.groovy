@@ -20,6 +20,7 @@ import java.nio.file.Path
 
 import groovy.json.JsonOutput
 import groovy.json.JsonSlurper
+import groovy.text.GStringTemplateEngine
 import groovy.yaml.YamlSlurper
 import groovy.transform.CompileStatic
 import groovyx.gpars.dataflow.DataflowReadChannel
@@ -112,6 +113,34 @@ class BoostExtension extends PluginExtensionPoint {
             throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
 
         new TextWriter(opts).apply(items, path)
+    }
+
+    /**
+     * Render a template from a file with the given binding.
+     *
+     * @param file
+     * @param binding
+     */
+    @Function
+    String template(Path file, Map binding) {
+        return new GStringTemplateEngine()
+            .createTemplate(file.toFile())
+            .make(binding)
+            .toString()
+    }
+
+    /**
+     * Render a template with the given binding.
+     *
+     * @param templateText
+     * @param binding
+     */
+    @Function
+    String template(String templateText, Map binding) {
+        return new GStringTemplateEngine()
+            .createTemplate(templateText)
+            .make(binding)
+            .toString()
     }
 
     /// OPERATORS
