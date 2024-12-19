@@ -93,6 +93,14 @@ Specify how often to scan for cleanup (default: `'60s'`).
 
 ### Functions
 
+**`fromJson( source: Path | String )`**
+
+Load a value from JSON.
+
+**`fromYaml( source: Path | String )`**
+
+Load a value from YAML.
+
 **`mergeCsv( records, path, [opts] )`**
 
 Save a list of records (i.e. tuples or maps) to a CSV file.
@@ -114,6 +122,14 @@ Available options:
 - `newLine`: Append a newline character after each entry (default: `false`).
 
 - `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
+
+**`toJson( value, pretty = false ) -> String`**
+
+Convert a value to JSON.
+
+**`toYaml( value ) -> String`**
+
+Convert a value to YAML.
 
 ### Operators
 

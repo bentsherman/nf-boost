@@ -18,6 +18,9 @@ package nextflow.boost
 
 import java.nio.file.Path
 
+import groovy.json.JsonOutput
+import groovy.json.JsonSlurper
+import groovy.yaml.YamlSlurper
 import groovy.transform.CompileStatic
 import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
@@ -34,6 +37,7 @@ import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
 import nextflow.script.ChannelOut
+import org.yaml.snakeyaml.Yaml
 
 @CompileStatic
 class BoostExtension extends PluginExtensionPoint {
@@ -87,6 +91,39 @@ class BoostExtension extends PluginExtensionPoint {
             throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
 
         new TextWriter(opts).apply(items, path)
+    }
+
+    @Function
+    Object fromJson(Path source) {
+        return new JsonSlurper().parse(source)
+    }
+
+    @Function
+    Object fromJson(String text) {
+        return new JsonSlurper().parseText(text)
+    }
+
+    @Function
+    String toJson(Object value, boolean pretty=false) {
+        final json = JsonOutput.toJson(value)
+        return pretty
+            ? JsonOutput.prettyPrint(json)
+            : json
+    }
+
+    @Function
+    Object fromYaml(Path source) {
+        return new YamlSlurper().parse(source)
+    }
+
+    @Function
+    Object fromYaml(String text) {
+        return new YamlSlurper().parseText(text)
+    }
+
+    @Function
+    String toYaml(Object value) {
+        return new Yaml().dump(value)
     }
 
     @Operator
