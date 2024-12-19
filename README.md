@@ -20,6 +20,8 @@ Currently includes the following features:
 
 - `mergeText` function for saving items to a text file (similar to `collectFile` operator)
 
+- `template` function for rendering templates
+
 - `exec` operator for creating an inline native (i.e. `exec`) process
 
 - `scan` operator for, well, scan operations
