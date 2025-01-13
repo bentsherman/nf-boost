@@ -28,7 +28,7 @@ Currently includes the following features:
 
 - `scan` operator for, well, scan operations
 
-- `then` and `thenMany` operators for defining custom operators in your pipeline
+- `then` operator for defining custom operators in your pipeline
 
 ## Getting Started
 
@@ -183,17 +183,11 @@ The `scan` operator is similar to `reduce` -- it applies an accumulator function
 
 **`then( [others...], opts )`**
 
-**`thenMany( onNext, emits: <emits>, [opts] )`**
-
-**`thenMany( [others...], emits: <emits>, opts )`**
-
 The `then` operator is a generic operator that can be used to implement nearly any operator you can imagine.
 
 It accepts any of three event handlers: `onNext`, `onComplete`, and `onError` (similar to `subscribe`). Each event handler has access to the following methods:
 
-- `emit( value )`: emit a value to the output channel (used only by `then`)
-
-- `emit( name, value )`: emit a value to an output channel (used only by `thenMany`)
+- `emit( value )`: emit a value to the output channel
 
 - `done()`: signal that no more values will be emitted
 
@@ -202,8 +196,6 @@ When there is only one source channel, the `done()` method will be called automa
 When there are multiple source channels, `onNext` and `onComplete` events are *synchronized*. This way, you don't need to worry about making your event handlers thread-safe, because they will be invoked on one event at a time.
 
 Available options:
-
-- `emits`: List of output channel names when using `thenMany`. Whereas `then` emits a single channel, `thenMany` emits a multi-channel output (similar to processes and workflows) where each output can be accessed by name.
 
 - `onNext( value, [i] )`: Closure that is invoked when a value is emitted by a source channel. Equivalent to providing a closure as the first argument. When there are multiple source channels, the closure is invoked with a second argument corresponding to the index of the source channel.
 

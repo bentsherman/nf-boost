@@ -1,41 +1,5 @@
 
-include { then ; thenMany } from 'plugin/nf-boost'
-
-@ValueObject
-class BranchCriteria {
-  String name
-  Closure predicate
-}
-
-def boostBranch(ch, List<BranchCriteria> criteria) {
-  def names = criteria.collect { c -> c.name }
-  ch.thenMany(emits: names) { val ->
-    criteria.each { c -> 
-      if( c.predicate(val) )
-        emit(c.name, val)
-    }
-  }
-}
-
-def boostBuffer(ch, int size, boolean remainder = false) {
-  if( size <= 0 )
-    error 'buffer `size` parameter must be greater than zero'
-
-  def buffer = []
-  ch.then(
-    onNext: { val ->
-      buffer << val
-      if( buffer.size() == size ) {
-        emit(buffer)
-        buffer = []
-      }
-    },
-    onComplete: {
-      if( remainder && buffer.size() > 0 )
-        emit(buffer)
-    }
-  )
-}
+include { then } from 'plugin/nf-boost'
 
 def boostCollect(ch) {
   def result = []
@@ -45,34 +9,7 @@ def boostCollect(ch) {
       result << val
     },
     onComplete: {
-      if( result )
-        emit(result)
-    }
-  )
-}
-
-def boostConcat(ch, others) {
-  def n = others.size() + 1
-  def buffers = (1..n).collect { i -> [] }
-  def completed = (1..n).collect { i -> false }
-  def current = 0
-  ch.then(
-    *others,
-    singleton: false,
-    onNext: { val, i ->
-      if( current == i )
-        emit(val)
-      else
-        buffers[i] << val
-    },
-    onComplete: { i ->
-      completed[i] = true
-      while( current < n && completed[current] ) {
-        current += 1
-        buffers[current].each { val -> emit(val) }
-      }
-      if( current == n )
-        done()
+      emit(result)
     }
   )
 }
@@ -120,11 +57,11 @@ def boostCross(Map opts = [:], left, right) {
         rightValues[keys] = []
 
       if( i == 0 ) {
-        rightValues[keys].each { rval -> emit( [*keys, *values, *rval] ) }
+        rightValues[keys].each { rval -> emit( keys + values + [rval] ) }
         leftValues[keys] << values
       }
       else if( i == 1 ) {
-        leftValues[keys].each { lval -> emit( [*keys, *lval, *values] ) }
+        leftValues[keys].each { lval -> emit( keys + [lval] + values ) }
         rightValues[keys] << values
       }
     },
@@ -136,35 +73,10 @@ def boostCross(Map opts = [:], left, right) {
   )
 }
 
-def boostDistinct(ch) {
-  def first = true
-  def prev
-  ch.then { val ->
-    if( first ) {
-      first = false
-      emit(val)
-    }
-    else if( val != prev )
-      emit(val)
-    prev = val
-  }
-}
-
 def boostFilter(ch, Closure predicate) {
   ch.then { val ->
     if( predicate(val) )
       emit(val)
-  }
-}
-
-def boostFirst(ch) {
-  def first = true
-  ch.then(singleton: true) { val ->
-    if( !first )
-      return
-    emit(val)
-    first = false
-    done()
   }
 }
 
@@ -290,7 +202,7 @@ def boostJoin(Map opts = [:], left, right) {
       buffers[i] = values
 
       if( buffers.size() == 2 )
-        emit( [*keys, *buffers[0], *buffers[1]] )
+        emit( keys + buffers[0] + buffers[1] )
     },
     onComplete: { i ->
       count -= 1
@@ -309,46 +221,16 @@ def boostJoin(Map opts = [:], left, right) {
   )
 }
 
-def boostLast(ch) {
-  def last
-  ch.then(
-    singleton: true,
-    onNext: { val ->
-      last = val
-    },
-    onComplete: { emit(last) }
-  )
-}
-
 def boostMap(ch, Closure mapper) {
   ch.then { val ->
     emit(mapper(val))
   }
 }
 
-def boostMerge(ch, others) {
-  // TODO: need to mark singleton channels so that they aren't consumed
-  def count = others.size() + 1
-  def buffers = (1..count).collect { i -> [] }
-  ch.then(
-    *others,
-    onNext: { val, i ->
-      buffers[i] << val
-      if( buffers.every { buf -> buf.size() > 0 } )
-        emit( buffers.collect { buf -> buf.pop() } )
-    },
-    onComplete: { i ->
-      count -= 1
-      if( count == 0 )
-        done()
-    }
-  )
-}
-
 def boostMix(ch, others) {
   def count = others.size() + 1
   ch.then(
-    *others,
+    others,
     singleton: false,
     onNext: { val, i ->
       emit(val)
@@ -359,21 +241,6 @@ def boostMix(ch, others) {
         done()
     }
   )
-}
-
-@ValueObject
-class MultiMapCriteria {
-  String name
-  Closure transform
-}
-
-def boostMultiMap(ch, List<MultiMapCriteria> criteria) {
-  def names = criteria.collect { c -> c.name }
-  ch.thenMany(emits: names) { val ->
-    criteria.each { c ->
-      emit(c.name, c.transform(val))
-    }
-  }
 }
 
 def boostReduce(ch, seed=null, Closure accumulator) {
@@ -387,64 +254,6 @@ def boostReduce(ch, seed=null, Closure accumulator) {
   )
 }
 
-def boostTake(ch, int n) {
-  def count = 0
-  ch.then(singleton: false) { val ->
-    if( n != 0 )
-      emit(val)
-    if( n >= 0 && ++count >= n )
-      done()
-  }
-}
-
-def boostTranspose(ch, by = null, boolean remainder = false) {
-  def cols = by == null
-    ? []
-    : by instanceof List ? by : [by]
-
-  ch.then(singleton: false) { val ->
-    if( !(val instanceof List) )
-      error "In `transpose` operator -- expected a tuple but received: ${val} [${val.class.simpleName}]"
-
-    def tuple = val as List
-    cols.eachWithIndex { col, i ->
-      def el = tuple[col]
-      if( !(el instanceof List) )
-        error "In `transpose` operator -- expected a list at tuple index ${col} but received: ${el} [${el.class.simpleName}]"
-    }
-
-    def indices = cols ?: {
-      def result = []
-      tuple.eachWithIndex { el, i ->
-        if( el instanceof List )
-          result << i
-      }
-      result
-    }.call()
-
-    def max = indices.collect { i -> tuple[i].size() }.max()
-
-    max.times { i ->
-      def result = []
-
-      tuple.eachWithIndex { el, k ->
-        if( k in indices ) {
-          def list = el
-          if( i < list.size() )
-            result[k] = list[i]
-          else if( remainder )
-            result[k] = null
-          else
-            return
-        }
-        else
-          result[k] = el
-      }
-      emit(result)
-    }
-  }
-}
-
 def boostUntil(ch, Closure predicate) {
   ch.then { val ->
     if( predicate(val) )
@@ -452,36 +261,6 @@ def boostUntil(ch, Closure predicate) {
     else
       emit(val)
   }
-}
-
-def boostWindow(ch, int size, int step, boolean remainder = true) {
-  if( size <= 0 )
-    error 'window `size` parameter must be greater than zero'
-  if( step <= 0 )
-    error 'window `step` parameter must be greater than zero'
-
-  def windows = []
-  def index = 0
-  ch.then(
-    singleton: false,
-    onNext: { val ->
-      index += 1
-      if( index % step == 0 )
-        windows << []
-
-      windows.each { window -> window << val }
-
-      def window = windows.head()
-      if( window.size() == size ) {
-        emit(window)
-        windows = windows.tail()
-      }
-    },
-    onComplete: {
-      if( remainder && windows.size() > 0 )
-        windows.each { window -> emit(window) }
-    }
-  )
 }
 
 def parseQueueValues(String queue) {
@@ -513,39 +292,9 @@ workflow {
       ? Channel.value( params.value )
       : Channel.fromList( parseQueueValues(params.queue) )
 
-  // branch
-  ch_branch = boostBranch(ch, [
-      new BranchCriteria('div1', { v -> v % 1 == 0 }),
-      new BranchCriteria('div2', { v -> v % 2 == 0 }),
-      new BranchCriteria('div3', { v -> v % 3 == 0 }),
-    ])
-
-  Channel.empty()
-    .mix(
-      ch_branch.div1.map { v -> "div1: ${v}" },
-      ch_branch.div2.map { v -> "div2: ${v}" },
-      ch_branch.div3.map { v -> "div3: ${v}" }
-    )
-    .dump(tag: 'branch')
-
-  ch_branch.div1.dump(tag: 'branch:div1')
-  ch_branch.div2.dump(tag: 'branch:div2')
-  ch_branch.div3.dump(tag: 'branch:div3')
-
-  // buffer
-  boostBuffer(ch, 3, true)
-    .dump(tag: 'buffer')
-
   // collect
   boostCollect(ch)
     .dump(tag: 'collect')
-
-  // concat
-  ch1 = ch
-  ch2 = ch
-  ch3 = ch
-  boostConcat(ch1, [ch2, ch3])
-    .dump(tag: 'concat')
 
   // cross
   ch_left = ch
@@ -559,18 +308,9 @@ workflow {
   boostCross(ch_left, ch_right, by: 0)
     .dump(tag: 'cross-by')
 
-  // distinct
-  ch_rev = ch | collect | flatMap { v -> v.reverse() }
-  boostDistinct(ch.concat(ch_rev))
-    .dump(tag: 'distinct')
-
   // filter
   boostFilter(ch) { v -> v > 5 }
     .dump(tag: 'filter')
-
-  // first
-  boostFirst(ch)
-    .dump(tag: 'first')
 
   // flatMap
   boostFlatMap(ch) { v -> [v] * asInteger(v) }
@@ -591,20 +331,9 @@ workflow {
   boostJoin(ch_left, ch_right)
     .dump(tag: 'join')
 
-  // last
-  boostLast(ch)
-    .dump(tag: 'last')
-
   // map
   boostMap(ch) { v -> v * 2 }
     .dump(tag: 'map')
-
-  // merge
-  ch1 = ch
-  ch2 = ch
-  ch3 = Channel.value('foo')
-  boostMerge(ch1, [ch2, ch3])
-    .dump(tag: 'merge')
 
   // mix
   ch1 = ch
@@ -613,43 +342,11 @@ workflow {
   boostMix(ch1, [ch2, ch3])
     .dump(tag: 'mix')
 
-  // multiMap
-  ch_multi = boostMultiMap(ch, [
-      new MultiMapCriteria('mul1', { v -> v * 1 }),
-      new MultiMapCriteria('mul2', { v -> v * 2 }),
-      new MultiMapCriteria('mul3', { v -> v * 3 }),
-    ])
-
-  Channel.empty()
-    .mix(
-      ch_multi.mul1.map { v -> "mul1: ${v}" },
-      ch_multi.mul2.map { v -> "mul2: ${v}" },
-      ch_multi.mul3.map { v -> "mul3: ${v}" }
-    )
-    .dump(tag: 'multiMap')
-
-  ch_multi.mul1.dump(tag: 'multiMap:mul1')
-  ch_multi.mul2.dump(tag: 'multiMap:mul2')
-  ch_multi.mul3.dump(tag: 'multiMap:mul3')
-
   // reduce
   boostReduce(ch) { acc, v -> acc + v }
     .dump(tag: 'reduce')
 
-  // take
-  boostTake(ch, 3)
-    .dump(tag: 'take')
-
-  // transpose
-  ch_grouped = ch.map { v -> [v, 1..v as ArrayList] }
-  boostTranspose( ch_grouped.dump(tag: 'transpose') )
-    .dump(tag: 'transpose')
-
   // until
   boostUntil(ch) { v -> v == 7 }
     .dump(tag: 'until')
-
-  // window
-  boostWindow(ch, 3, 1, true)
-    .dump(tag: 'window')
 }

@@ -26,7 +26,6 @@ import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Channel
 import nextflow.extension.CH
 import nextflow.extension.DataflowHelper
-import nextflow.script.ChannelOut
 
 @CompileStatic
 class ThenOp {
@@ -54,18 +53,12 @@ class ThenOp {
             ? opts.singleton as boolean
             : sources.size() == 1 && CH.isValue(sources.first())
 
-        final emits = opts.emits != null
-            ? opts.emits as List<String>
-            : List.of(EventDsl.DEFAULT_EMIT_NAME)
-
-        this.dsl = new EventDsl(emits, singleton)
+        this.dsl = new EventDsl(singleton)
         for( final key : EVENT_NAMES ) {
             if( !opts.containsKey(key) )
                 continue
-            if( opts[key] !instanceof Closure ) {
-                final opName = opts.emits ? 'thenMany' : 'then'
-                throw new IllegalArgumentException("In `${opName}` operator -- option `${key}` must be a closure")
-            }
+            if( opts[key] !instanceof Closure )
+                throw new IllegalArgumentException("In `then` operator -- option `${key}` must be a closure")
 
             final closure = (Closure)opts[key]
             final cl = (Closure)closure.clone()
@@ -78,7 +71,7 @@ class ThenOp {
 
     ThenOp apply() {
         for( int i = 0; i < sources.size(); i++ )
-            DataflowHelper.subscribeImpl(sources[i], eventsMap(handlers, i))
+            DataflowHelper.subscribeImpl(CH.getReadChannel(sources[i]), eventsMap(handlers, i))
         return this
     }
 
@@ -117,67 +110,37 @@ class ThenOp {
     }
 
     DataflowWriteChannel getOutput() {
-        return dsl.targets.values().first()
-    }
-
-    ChannelOut getMultiOutput() {
-        return new ChannelOut(dsl.targets)
+        return dsl.target
     }
 
     private static class EventDsl {
 
-        private static final String DEFAULT_EMIT_NAME = '_'
+        private DataflowWriteChannel target
 
-        private Map<String,DataflowWriteChannel> targets = [:]
-
-        private Map<String,Boolean> emitted = [:]
+        private boolean emitted = false
 
         private boolean stopped = false
 
-        EventDsl(List<String> emits, boolean singleton) {
-            for( def emit : emits ) {
-                targets.put(emit, CH.create(singleton))
-                emitted.put(emit, false)
-            }
+        EventDsl(boolean singleton) {
+            target = CH.create(singleton)
         }
 
         void emit(value) {
-            if( isMultiOutput() )
-                throw new IllegalArgumentException("In `thenMany` operator -- single-channel emit() is not allowed, use `then` instead")
-            emit0(DEFAULT_EMIT_NAME, value)
-        }
-
-        void emit(String name, value) {
-            if( !isMultiOutput() )
-                throw new IllegalArgumentException("In `then` operator -- multi-channel emit() is not allowed, use `thenMany` instead")
-            if( !targets.containsKey(name) )
-                throw new IllegalArgumentException("In `then` operator -- emit '${name}' is not defined")
-            emit0(name, value)
-        }
-
-        private void emit0(String name, value) {
-            targets[name] << value
-            emitted[name] = true
+            target << value
+            emitted = true
         }
 
         void done() {
             if( stopped )
                 return
-            for( def name : targets.keySet() ) {
-                final target = targets[name]
-                if( !CH.isValue(target) || !emitted[name] ) {
-                    target << Channel.STOP
-                    stopped = true
-                }
+            if( !CH.isValue(target) || !emitted ) {
+                target << Channel.STOP
+                stopped = true
             }
         }
 
-        Map<String,DataflowWriteChannel> getTargets() {
-            return targets
-        }
-
-        private boolean isMultiOutput() {
-            targets.size() != 1 || !targets.containsKey(DEFAULT_EMIT_NAME)
+        DataflowWriteChannel getTarget() {
+            return target
         }
     }
 

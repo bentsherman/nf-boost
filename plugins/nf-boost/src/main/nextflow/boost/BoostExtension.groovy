@@ -37,7 +37,6 @@ import nextflow.extension.MapOp
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
-import nextflow.script.ChannelOut
 import org.yaml.snakeyaml.Yaml
 
 @CompileStatic
@@ -209,37 +208,16 @@ class BoostExtension extends PluginExtensionPoint {
     }
 
     @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], DataflowReadChannel... others) {
-        if( opts.emits )
-            throw new IllegalArgumentException('In `then` operator -- emit names are not allowed, use `thenMany` instead')
+    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], DataflowReadChannel other) {
+        then(source, opts, [other])
+    }
 
+    @Operator
+    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], List<DataflowReadChannel> others) {
         List<DataflowReadChannel> sources = []
         sources.add(source)
         sources.addAll(others)
         new ThenOp(sources, opts).apply().getOutput()
-    }
-
-    @Operator
-    ChannelOut thenMany(DataflowReadChannel source, Map opts=[:], Closure closure) {
-        thenMany(source, opts + [onNext: closure])
-    }
-
-    @Operator
-    ChannelOut thenMany(DataflowReadChannel source, Map opts=[:]) {
-        if( !opts.emits )
-            throw new IllegalArgumentException('In `thenMany` operator -- emit names must be defined, or use `then` instead')
-        new ThenOp(source, opts).apply().getMultiOutput()
-    }
-
-    @Operator
-    ChannelOut thenMany(DataflowReadChannel source, Map opts=[:], DataflowReadChannel... others) {
-        if( !opts.emits )
-            throw new IllegalArgumentException('In `thenMany` operator -- emit names must be defined, or use `then` instead')
-
-        List<DataflowReadChannel> sources = []
-        sources.add(source)
-        sources.addAll(others)
-        new ThenOp(sources, opts).apply().getMultiOutput()
     }
 
 }
