@@ -46,6 +46,8 @@ The plugin requires Nextflow version `23.10.0` or later.
 
 *New in version `0.4.0`: requires Nextflow `24.04.0` or later.*
 
+*New in version `0.5.0`: requires Nextflow `24.10.0` or later.*
+
 If a release hasn't been published to the main registry yet, you can still use it by specifying the following environment variable so that Nextflow can find the plugin:
 
 ```bash
@@ -103,7 +105,7 @@ Specify how often to scan for cleanup (default: `'60s'`).
 
 Load a value from JSON.
 
-**`toJson( value, pretty = false ) -> String`**
+**`toJson( value, pretty: boolean = false ) -> String`**
 
 Convert a value to JSON.
 
@@ -115,27 +117,37 @@ Load a value from YAML.
 
 Convert a value to YAML.
 
-**`mergeCsv( records, path, [opts] )`**
+**`mergeCsv( records: List, path: Path, [opts] )`**
 
 Save a list of records (i.e. tuples or maps) to a CSV file.
 
 Available options:
 
-- `header`: When `true`, the keys of the first record are used as the column names (default: `false`). Can also be a list of column names.
+- `header: boolean | List<String>`
 
-- `sep`: The character used to separate values (default: `','`).
+  When `true`, the keys of the first record are used as the column names (default: `false`). Can also be a list of column names.
 
-**`mergeText( items, path, [opts] )`**
+- `sep: String`
+
+  The character used to separate values (default: `','`).
+
+**`mergeText( items: List<Path> | List<String>, path: Path, [opts] )`**
 
 Save a list of items (i.e. files or strings) to a text file.
 
 Available options:
 
-- `keepHeader`: Prepend the resulting file with the header of the first file (default: `false`). The number of header lines can be specified using the `skip` option, to determine how many lines to remove from each file.
+- `keepHeader: boolean`
 
-- `newLine`: Append a newline character after each entry (default: `false`).
+  Prepend the resulting file with the header of the first file (default: `false`). The number of header lines can be specified using the `skip` option, to determine how many lines to remove from each file.
 
-- `skip`: The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
+- `newLine: boolean`
+
+  Append a newline character after each entry (default: `false`).
+
+- `skip: int`
+
+  The number of lines to skip at the beginning of each entry (default: `1` when `keepHeader` is true, `0` otherwise).
 
 **`request( url: String, [opts] )`**
 

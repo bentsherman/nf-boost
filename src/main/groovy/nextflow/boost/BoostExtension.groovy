@@ -28,13 +28,13 @@ import groovyx.gpars.dataflow.DataflowWriteChannel
 import nextflow.Channel
 import nextflow.Session
 import nextflow.boost.ops.ThenOp
-import nextflow.boost.writers.CsvWriter
 import nextflow.boost.writers.TextWriter
 import nextflow.extension.CH
 import nextflow.extension.DataflowHelper
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
+import nextflow.util.CsvWriter
 import org.yaml.snakeyaml.Yaml
 
 @CompileStatic

@@ -24,13 +24,11 @@ workflow {
 }
 
 output {
-  directory 'results'
-
-  'bam' {
+  bam {
     path '.'
   }
 
-  'summary' {
+  summary {
     path '.'
   }
 }
