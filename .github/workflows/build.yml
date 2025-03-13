@@ -17,7 +17,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        java_version: [11, 17]
+        java_version: [17]
+        nextflow_version: ['24.04']
 
     steps:
       - name: Environment
@@ -35,11 +36,19 @@ jobs:
           java-version: ${{matrix.java_version}}
           architecture: x64
           distribution: 'temurin'
-      
-      - name: Compile
-        run: ./gradlew assemble
 
-      - name: Tests
-        run: ./gradlew check
+      - name: Unit tests
+        run: make test
         env:
           GRADLE_OPTS: '-Dorg.gradle.daemon=false'
+
+      - name: Setup Nextflow ${{ matrix.nextflow_version }}
+        uses: nf-core/setup-nextflow@b9f764e8ba5c76b712ace14ecbfcef0e40ae2dd8 # v1
+        with:
+          version: "${{ matrix.nextflow_version }}"
+
+      - name: Install
+        run: make install
+
+      - name: Test
+        run: cd examples ; bash test.sh

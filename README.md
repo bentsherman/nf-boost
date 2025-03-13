@@ -207,6 +207,14 @@ Available options:
 
 ## Development
 
-The easiest way to build and test nf-boost locally is to run `make install`. This will build the plugin and install it to your Nextflow plugins directory (e.g. `~/.nextflow/plugins`), using the version defined in `MANIFEST.MF`. Finally, specify the plugin in your Nextflow config with this exact version. You can then use it locally like a regular plugin.
+Build and install the plugin to your local environment:
 
-Refer to the [nf-hello](https://github.com/nextflow-io/nf-hello) README for more information about building and publishing Nextflow plugins.
+```bash
+make install
+```
+
+Run with Nextflow as usual:
+
+```bash
+nextflow run hello -plugins nf-boost@<version>
+```
