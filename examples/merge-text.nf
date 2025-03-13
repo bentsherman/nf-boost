@@ -60,7 +60,7 @@ workflow MERGE_TEXT {
   Channel.of( 1..10 )
     | map { i -> makeRecord(i) }
     | RECORD_TO_CSV
-    | map { meta, csv -> csv }
+    | map { _meta, csv -> csv }
     | collect
     | ITEMS_TO_TXT
     | view { txt -> txt.text }
@@ -76,7 +76,7 @@ workflow GROUP_SORT_MERGE_TEXT {
     | map { group, items ->
       def sorted = items
         .sort { item -> item[0].id }
-        .collect { meta, csv -> csv }
+        .collect { _meta, csv -> csv }
       return [group, sorted]
     }
     | GROUPS_TO_TXT

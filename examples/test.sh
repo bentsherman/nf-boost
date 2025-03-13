@@ -4,7 +4,7 @@ exit_status=0
 
 NXF_CMD=${NXF_CMD:-nextflow}
 NXF_FILES=${*:-'*.nf'}
-BOOST_VER="0.4.0"
+BOOST_VER="0.5.0"
 
 for pipeline in $NXF_FILES ; do
 
