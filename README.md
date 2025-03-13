@@ -24,8 +24,6 @@ Currently includes the following features:
 
 - `template` function for rendering templates
 
-- `exec` operator for creating an inline native (i.e. `exec`) process
-
 - `scan` operator for, well, scan operations
 
 - `then` operator for defining custom operators in your pipeline
@@ -165,15 +163,7 @@ Render a template with the given binding.
 
 **`exec( name, body )`**
 
-The `exec` operator creates and invokes an inline native (i.e. `exec`) process with the given name, as well as a closure which corresponds to the `exec:` section of a native process.
-
-The inline process can be configured from the config file like any other process, including the use of process selectors (i.e. `withName`).
-
-Limitations:
-
-- Inline process directives are not supported yet.
-
-- The inline exec body should accept a single value and return a single value. Multiple inputs/outputs are not supported yet.
+The `exec` operator was removed in version 0.5.0. Use an `exec` process instead.
 
 **`scan( [seed], accumulator )`**
 

@@ -27,13 +27,11 @@ import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import nextflow.Channel
 import nextflow.Session
-import nextflow.boost.ops.ExecOp
 import nextflow.boost.ops.ThenOp
 import nextflow.boost.writers.CsvWriter
 import nextflow.boost.writers.TextWriter
 import nextflow.extension.CH
 import nextflow.extension.DataflowHelper
-import nextflow.extension.MapOp
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
@@ -163,20 +161,6 @@ class BoostExtension extends PluginExtensionPoint {
     }
 
     /// OPERATORS
-
-    /**
-     * Create and invoke an inline native i.e. `exec` process.
-     *
-     * @param source
-     * @param name
-     * @param body
-     */
-    @Operator
-    DataflowWriteChannel exec(DataflowReadChannel source, String name, Closure body) {
-        final out = new ExecOp(source, session, name, body).apply()
-        // append dummy operation so that the output isn't added to the DAG twice
-        new MapOp( CH.getReadChannel(out), (v) -> v ).apply()
-    }
 
     @Operator
     DataflowWriteChannel scan(DataflowReadChannel source, seed=null, Closure accumulator) {
