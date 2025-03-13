@@ -2,7 +2,7 @@
 # Track the disk usage of the work directory during a pipeline run.
 
 DIR=${DIR:-'work'}
-CMD=${CMD:-'nextflow run examples/cleanup.nf'}
+CMD=${CMD:-'nextflow run examples/cleanup-v2.nf -c examples/cleanup-v2.config'}
 WATCH_INTERVAL=${WATCH_INTERVAL:-'1'}
 OUTFILE=${1:-'disk-usage.txt'}
 
