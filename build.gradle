@@ -3,14 +3,15 @@ plugins {
     id 'io.nextflow.nextflow-plugin' version '0.0.1-alpha2'
 }
 
-version = '0.5.0'
+version = '0.6.0'
 
 nextflowPlugin {
-    nextflowVersion = '24.10.0'
+    nextflowVersion = '25.02.0-edge'
 
     provider = 'nextflow'
     className = 'nextflow.boost.BoostPlugin'
     extensionPoints = [
+        'nextflow.boost.BoostConfig',
         'nextflow.boost.BoostExtension',
         'nextflow.boost.BoostObserverFactory'
     ]
