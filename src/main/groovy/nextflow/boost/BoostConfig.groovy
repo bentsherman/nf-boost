@@ -20,6 +20,7 @@ import nextflow.config.schema.ConfigOption
 import nextflow.config.schema.ConfigScope
 import nextflow.config.schema.ScopeName
 import nextflow.script.dsl.Description
+import nextflow.util.Duration
 
 @ScopeName('boost')
 @Description('''
@@ -27,17 +28,36 @@ import nextflow.script.dsl.Description
 ''')
 class BoostConfig implements ConfigScope {
 
-    @ConfigOption
+    @ConfigOption // (types=[Boolean])
     @Description('''
         Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
 
         Can also be `'v1'` or `'v2'` to use an implementation that works with publishDir or the workflow output definition, respectively. Setting to `true` is equivalent to `'v1'`.
-        ''')
-    String cleanup
+    ''')
+    final String cleanup
 
     @ConfigOption
     @Description('''
         Specify how often to scan for cleanup (default: `'60s'`).
-        ''')
-    Duration cleanupInterval
+    ''')
+    final Duration cleanupInterval
+
+    /* required by extension point -- do not remove */
+    BoostConfig() {}
+
+    BoostConfig(Map opts) {
+        cleanup = parseCleanup(opts.cleanup)
+        cleanupInterval = opts.cleanupInterval as Duration ?: Duration.of('60s')
+    }
+
+    private static String parseCleanup(Object value) {
+        if( value == true )
+            return 'v1'
+        if( value == false || value == null )
+            return null
+        if( value == 'v1' || value == 'v2' )
+            return value
+        throw new IllegalArgumentException("Invalid `boost.cleanup` value -- ${value}")
+    }
+
 }

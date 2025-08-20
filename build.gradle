@@ -1,12 +1,12 @@
 
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '0.0.1-alpha2'
+    id 'io.nextflow.nextflow-plugin' version '0.0.1-alpha3'
 }
 
 version = '0.6.0'
 
 nextflowPlugin {
-    nextflowVersion = '25.02.0-edge'
+    nextflowVersion = '25.04.0'
 
     provider = 'nextflow'
     className = 'nextflow.boost.BoostPlugin'

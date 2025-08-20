@@ -1,4 +1,4 @@
-This directory contains scripts that can be used to benchmark the automatic cleanup. The `examples/cleanup.nf` script is an example pipeline, but you can use any pipeline you want.
+This directory contains scripts that can be used to benchmark the automatic cleanup. The `examples/cleanup-v2.nf` script is an example pipeline, but you can use any pipeline you want.
 
 Here's a simple benchmarking workflow:
 
