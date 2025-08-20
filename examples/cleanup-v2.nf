@@ -16,11 +16,11 @@ workflow {
     | mix(BAM2.out.log, BAM3.out.log)
     | collect
 
-  SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
+  ch_summary = SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
 
   publish:
-  BAM3.out.bam >> 'bam'
-  SUMMARY.out >> 'summary'
+  bam = BAM3.out.bam
+  summary = ch_summary
 }
 
 output {

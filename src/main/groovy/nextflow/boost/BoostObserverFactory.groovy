@@ -35,18 +35,19 @@ class BoostObserverFactory implements TraceObserverFactory {
 
     @Override
     Collection<TraceObserver> create(Session session) {
-        List<TraceObserver> result = []
+        final observer = createCleanupObserver(session)
+        return observer ? [ observer ] : []
+    }
 
-        final cleanup = session.config.navigate('boost.cleanup', false)
-        if( cleanup == true || cleanup == 'v1' )
-            result << new CleanupObserverV1()
-        else if( cleanup == 'v2' )
-            result << new CleanupObserver()
-        else if( cleanup != false ) {
-            throw new IllegalArgumentException("Invalid `boost.cleanup` value -- ${cleanup}")
-        }
+    protected TraceObserver createCleanupObserver(Session session) {
+        final opts = session.config.boost as Map ?: Collections.emptyMap()
+        final config = new BoostConfig(opts)
 
-        return result
+        if( config.cleanup == 'v1' )
+            return new CleanupObserverV1()
+        if( config.cleanup == 'v2' )
+            return new CleanupObserver()
+        return null
     }
 
 }

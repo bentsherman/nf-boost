@@ -28,6 +28,15 @@ Currently includes the following features:
 
 - `then` operator for defining custom operators in your pipeline
 
+## Requirements
+
+| Version |	Minimum Nextflow version |
+| ------- | ------------------------ |
+| 0.6.x   | 25.04 |
+| 0.5.x   | 24.10 |
+| 0.4.x   | 24.04 |
+| 0.1.x   | 23.10 |
+
 ## Getting Started
 
 To use `nf-boost`, include it in your Nextflow config and add any desired settings:
@@ -41,12 +50,6 @@ boost {
   cleanup = true
 }
 ```
-
-The plugin requires Nextflow version `23.10.0` or later.
-
-*New in version `0.4.0`: requires Nextflow `24.04.0` or later.*
-
-*New in version `0.5.0`: requires Nextflow `24.10.0` or later.*
 
 If a release hasn't been published to the main registry yet, you can still use it by specifying the following environment variable so that Nextflow can find the plugin:
 
@@ -206,17 +209,3 @@ Available options:
 - `onError( error )`: Closure that is invoked when an exception is raised while handling an `onNext` event. It is invoked the exception that caused the error. No further calls will be made to `onNext` or `onComplete` after this event. By default, the error is logged and the workflow is terminated.
 
 - `singleton`: Whether the output channel should be a value (i.e. *singleton*) channel. By default, it is determined by the source channel, i.e. if the source is a value channel then the output will also be a value channel and vice versa.
-
-## Development
-
-Build and install the plugin to your local environment:
-
-```bash
-make install
-```
-
-Run with Nextflow as usual:
-
-```bash
-nextflow run hello -plugins nf-boost@<version>
-```

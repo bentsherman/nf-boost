@@ -18,8 +18,6 @@ package nextflow.boost.cleanup
 
 import java.nio.file.Path
 import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.locks.Lock
-import java.util.concurrent.locks.ReentrantLock
 
 import groovy.transform.CompileStatic
 import groovy.transform.TupleConstructor
@@ -28,6 +26,7 @@ import groovyx.gpars.dataflow.DataflowWriteChannel
 import groovyx.gpars.dataflow.operator.DataflowEventAdapter
 import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
+import nextflow.boost.BoostConfig
 import nextflow.dag.DAG
 import nextflow.file.FileHelper
 import nextflow.processor.TaskHandler
@@ -38,7 +37,6 @@ import nextflow.trace.TraceRecord
 import nextflow.script.params.FileOutParam
 import nextflow.script.params.OutParam
 import nextflow.script.params.TupleOutParam
-import nextflow.util.Duration
 import nextflow.util.Threads
 /**
  * Delete temporary files once they are no longer needed.
@@ -48,8 +46,6 @@ import nextflow.util.Threads
 @Slf4j
 @CompileStatic
 class CleanupObserver implements TraceObserver {
-
-    static private final Duration DEF_CLEANUP_INTERVAL = Duration.of('60s')
 
     private Session session
 
@@ -68,7 +64,8 @@ class CleanupObserver implements TraceObserver {
     @Override
     void onFlowCreate(Session session) {
         this.session = session
-        this.delayMillis = (session.config.navigate('boost.cleanupInterval', DEF_CLEANUP_INTERVAL) as Duration).toMillis()
+        final config = new BoostConfig(session.config.boost as Map ?: Collections.emptyMap())
+        this.delayMillis = config.cleanupInterval.toMillis()
 
         if( session.resumeMode )
             log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
@@ -136,7 +133,7 @@ class CleanupObserver implements TraceObserver {
                 final publisherQueue = [ ch ]
                 while( !publisherQueue.isEmpty() ) {
                     final ch0 = publisherQueue.remove(0)
-                    if( ch0 in session.publishTargets ) {
+                    if( ch0 in session.outputs.values() ) {
                         log.trace "Process output `${process.name}/${i+1}` might be published"
                         publishable[i] = true
                         break
