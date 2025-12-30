@@ -18,9 +18,11 @@ process RECORDS_TO_CSV {
 
 
 workflow {
-  Channel.of( 1..10 )
-    | map { i -> ['id': i, 'name': "record_${i}"] }
-    | collect
-    | RECORDS_TO_CSV
-    | view { csv -> csv.text }
+  ch_records = channel.of( 1..10 )
+    .map { i -> ['id': i, 'name': "record_${i}"] }
+    .collect()
+
+  ch_csv = RECORDS_TO_CSV(ch_records)
+
+  ch_csv.view { csv -> csv.text }
 }

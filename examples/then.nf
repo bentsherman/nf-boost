@@ -287,10 +287,10 @@ workflow {
   params.queue = '1..10'
 
   ch = params.empty
-    ? Channel.empty()
+    ? channel.empty()
     : params.value
-      ? Channel.value( params.value )
-      : Channel.fromList( parseQueueValues(params.queue) )
+      ? channel.value( params.value )
+      : channel.fromList( parseQueueValues(params.queue) )
 
   // collect
   boostCollect(ch)

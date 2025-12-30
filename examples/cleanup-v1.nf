@@ -6,13 +6,13 @@ params.sleep_std = 3
 
 workflow {
   main:
-  BAM1( Channel.of( 1..params.bam_count ), params.sleep_mean, params.sleep_std, params.bam_size )
+  BAM1( channel.of( 1..params.bam_count ), params.sleep_mean, params.sleep_std, params.bam_size )
   BAM2(BAM1.out.bam, params.sleep_mean, params.sleep_std)
   BAM3(BAM2.out.bam, params.sleep_mean, params.sleep_std)
 
   ch_logs = BAM1.out.log
-    | mix(BAM2.out.log, BAM3.out.log)
-    | collect
+    .mix(BAM2.out.log, BAM3.out.log)
+    .collect()
 
   SUMMARY(ch_logs, params.sleep_mean, params.sleep_std)
 }

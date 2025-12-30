@@ -20,23 +20,10 @@ nextflow run hello -plugins nf-boost@<version>
 
 Follow these steps to package, upload, and publish the plugin:
 
-1. In `build.gradle` make sure that:
-   * `version` matches the desired release version,
-   * `github.repository` matches the repository of the plugin,
-   * `github.indexUrl` points to your fork of the plugins index repository.
+1. Update the version in `build.gradle`.
 
-2. Create a file named `$HOME/.gradle/gradle.properties`, where `$HOME` is your home directory. Add the following properties:
+2. Update the [changelog](./CHANGELOG.md).
 
-   * `github_username`: The GitHub username granting access to the plugin repository.
-   * `github_access_token`: The GitHub access token required to upload and commit changes to the plugin repository.
-   * `github_commit_email`: The email address associated with your GitHub account.
+3. Run `make release` to build and publish the plugin.
 
-3. Update the [changelog](./CHANGELOG.md).
-
-4. Build and publish the plugin to your GitHub repository:
-
-   ```bash
-   make release
-   ```
-
-5. Create a pull request against the [nextflow-io/plugins](https://github.com/nextflow-io/plugins/blob/main/plugins.json) repository to make the plugin publicly accessible.
+4. Make a [GitHub release](https://github.com/nextflow-io/nf-boost/releases).

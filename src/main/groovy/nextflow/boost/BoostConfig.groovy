@@ -28,7 +28,7 @@ import nextflow.util.Duration
 ''')
 class BoostConfig implements ConfigScope {
 
-    @ConfigOption // (types=[Boolean])
+    @ConfigOption(types=[Boolean])
     @Description('''
         Set to `true` to enable automatic cleanup (default: `false`). Temporary files will be automatically deleted as soon as they are no longer needed.
 
