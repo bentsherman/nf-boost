@@ -34,6 +34,8 @@ import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
 import nextflow.trace.TraceObserver
 import nextflow.trace.TraceRecord
+import nextflow.script.ProcessConfigV1
+import nextflow.script.ProcessConfigV2
 import nextflow.script.params.FileOutParam
 import nextflow.script.params.OutParam
 import nextflow.script.params.TupleOutParam
@@ -106,7 +108,7 @@ class CleanupObserver implements TraceObserver {
                 continue
 
             // get the set of consuming processes for each process output
-            final outputs = process.config.getOutputs()
+            final outputs = processOutputs(process)
             final List<Set<String>> consumers = outputs.collect { [] as Set }
             final List<Boolean> publishable = outputs.collect { false }
 
@@ -199,6 +201,15 @@ class CleanupObserver implements TraceObserver {
         }
     }
 
+    private static List<OutParam> processOutputs(TaskProcessor process) {
+        final config = process.config
+        if( config instanceof ProcessConfigV2 )
+            return config.getOutputs().getParams() as List<OutParam>
+        if( config instanceof ProcessConfigV1 )
+            return config.getOutputs()
+        return []
+    }
+
     /**
      * Determine whether a process output may forward input files
      * as outputs.
@@ -207,7 +218,7 @@ class CleanupObserver implements TraceObserver {
      *
      * @param param
      */
-    private boolean hasForwardedInputs(OutParam param) {
+    private static boolean hasForwardedInputs(OutParam param) {
         if( param instanceof FileOutParam && param.includeInputs )
             return true
         if( param instanceof TupleOutParam )

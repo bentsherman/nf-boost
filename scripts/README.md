@@ -1,5 +1,7 @@
 This directory contains scripts that can be used to benchmark the automatic cleanup. The `examples/cleanup-v2.nf` script is an example pipeline, but you can use any pipeline you want.
 
+Make sure to enable `nf-boost` with the appropriate version in your Nextflow config.
+
 Here's a simple benchmarking workflow:
 
 1. Run `./watch baseline.txt` with automatic cleanup disabled. It will save the disk usage over time to `baseline.txt`.

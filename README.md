@@ -32,6 +32,7 @@ Currently includes the following features:
 
 | Version |	Minimum Nextflow version |
 | ------- | ------------------------ |
+| 0.7.x   | 25.10 |
 | 0.6.x   | 25.04 |
 | 0.5.x   | 24.10 |
 | 0.4.x   | 24.04 |
@@ -49,12 +50,6 @@ plugins {
 boost {
   cleanup = true
 }
-```
-
-If a release hasn't been published to the main registry yet, you can still use it by specifying the following environment variable so that Nextflow can find the plugin:
-
-```bash
-export NXF_PLUGINS_TEST_REPOSITORY="https://github.com/bentsherman/nf-boost/releases/download/0.3.2/nf-boost-0.3.2-meta.json"
 ```
 
 ## Examples

@@ -57,30 +57,34 @@ def makeRecord(int i) {
 
 
 workflow MERGE_TEXT {
-  Channel.of( 1..10 )
-    | map { i -> makeRecord(i) }
-    | RECORD_TO_CSV
-    | map { _meta, csv -> csv }
-    | collect
-    | ITEMS_TO_TXT
-    | view { txt -> txt.text }
+  ch_records = channel.of( 1..10 ).map { i -> makeRecord(i) }
+
+  ch_csv = RECORD_TO_CSV(ch_records)
+
+  ch_items = ch_csv.map { _meta, csv -> csv }.collect()
+
+  ch_txt = ITEMS_TO_TXT(ch_items)
+  ch_txt.view { txt -> txt.text }
 }
 
 
 workflow GROUP_SORT_MERGE_TEXT {
-  Channel.of( 1..10 )
-    | map { i -> makeRecord(i) }
-    | RECORD_TO_CSV
-    | map { meta, csv -> [meta.type, [meta, csv]] }
-    | groupTuple
-    | map { group, items ->
+  ch_records = channel.of( 1..10 ).map { i -> makeRecord(i) }
+
+  ch_csv = RECORD_TO_CSV(ch_records)
+
+  ch_groups = ch_csv
+    .map { meta, csv -> [meta.type, [meta, csv]] }
+    .groupTuple()
+    .map { group, items ->
       def sorted = items
         .sort { item -> item[0].id }
         .collect { _meta, csv -> csv }
-      return [group, sorted]
+      return tuple(group, sorted)
     }
-    | GROUPS_TO_TXT
-    | view { txt -> txt.text }
+
+  ch_txt = GROUPS_TO_TXT(ch_groups)
+  ch_txt.view { txt -> txt.text }
 }
 
 

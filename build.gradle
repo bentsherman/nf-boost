@@ -1,12 +1,12 @@
 
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '0.0.1-alpha3'
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.12'
 }
 
-version = '0.6.0'
+version = '0.7.0'
 
 nextflowPlugin {
-    nextflowVersion = '25.04.0'
+    nextflowVersion = '25.10.0'
 
     provider = 'nextflow'
     className = 'nextflow.boost.BoostPlugin'
@@ -15,15 +15,4 @@ nextflowPlugin {
         'nextflow.boost.BoostExtension',
         'nextflow.boost.BoostObserverFactory'
     ]
-
-    publishing {
-        github {
-            repository = 'bentsherman/nf-boost'
-            userName = project.findProperty('github_username')
-            authToken = project.findProperty('github_access_token')
-            email = project.findProperty('github_commit_email')
-
-            indexUrl = 'https://github.com/nextflow-io/plugins/blob/main/plugins.json'
-        }
-    }
 }
