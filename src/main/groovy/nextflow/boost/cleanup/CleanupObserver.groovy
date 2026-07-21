@@ -237,13 +237,18 @@ class CleanupObserver implements TraceObserver {
         log.trace "Processing ${events.size()} workflow events"
 
         // process each event
+        // we first need to proces the task completed events to
+        // make sure all output paths are in the paths object and
+        // can then be modified by onTaskComplete0.
         boolean cleanup = false
+        for( final event : events ) {
+            if( event instanceof Event.TaskCompleted ) {
+                cleanup |= onTaskComplete0(event.task)
+            }
+        }
         for( final event : events ) {
             if( event instanceof Event.TaskPending ) {
                 onTaskPending0(event.task)
-            }
-            else if( event instanceof Event.TaskCompleted ) {
-                cleanup |= onTaskComplete0(event.task)
             }
             else if( event instanceof Event.FilePublished ) {
                 onFilePublish0(event.path)
