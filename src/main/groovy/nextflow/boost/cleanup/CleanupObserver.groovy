@@ -55,6 +55,20 @@ class CleanupObserver implements TraceObserver {
 
     private Map<Path,PathState> paths = [:]
 
+    /**
+     * Consumer tasks waiting for a producer path to appear in {@link #paths}.
+     *
+     * Nextflow emits {@code TaskPending} for downstream tasks after binding
+     * outputs to channels but before the producer's {@code TaskCompleted}
+     * event (see <a href="https://github.com/bentsherman/nf-boost/issues/4">#4</a>).
+     * Stash claims here and attach them when the producer completes; do not
+     * create {@link PathState} entries from pending claims alone.
+     *
+     * Ledger maps use {@link #toRealPathOrAbsolute} so bind-mount aliases (e.g. /home vs
+     * /clinicfs) share one Path identity.
+     */
+    private Map<Path,Set<TaskRun>> pendingClaims = [:]
+
     private Set<TaskRun> completedTasks = []
 
     private Set<Path> publishedOutputs = []
@@ -276,8 +290,14 @@ class CleanupObserver implements TraceObserver {
         // mark task as consumer of each input file
         final inputs = task.getInputFilesMap().values()
         for( Path path : inputs ) {
-            if( path in paths )
-                paths[path].consumerTasks << task
+            final Path canonicalPath = toRealPathOrAbsolute(path)
+            if( canonicalPath in paths ) {
+                paths[canonicalPath].consumerTasks << task
+            }
+            else {
+                (pendingClaims[canonicalPath] ?: (pendingClaims[canonicalPath] = [] as Set<TaskRun>)) << task
+                log.trace "Stashed pending consumer claim for ${canonicalPath.toUriString()} from task <${task.name}>"
+            }
         }
     }
 
@@ -294,6 +314,8 @@ class CleanupObserver implements TraceObserver {
     }
 
     private boolean onTaskComplete0(TaskRun task) {
+        dropPendingClaimsForTask(task)
+
         // mark failed task as completed without scanning for cleanup
         // TODO: wait for retried task to be pending first
         if( !task.isSuccess() ) {
@@ -310,8 +332,10 @@ class CleanupObserver implements TraceObserver {
         // get process consumers for each file
         final processConsumersMap = getProcessConsumers(task, outputs)
 
-        // get publishable outputs
-        final publishableOutputs = getPublishableOutputs(task, outputs)
+        // get publishable outputs (canonical Path identity for ledger maps)
+        final Set<Path> publishableOutputs = [] as Set
+        for( Path p : getPublishableOutputs(task, outputs) )
+            publishableOutputs << toRealPathOrAbsolute(p)
 
         log.trace "[${task.name}] the following files might be published: ${publishableOutputs*.toUriString()}"
 
@@ -325,15 +349,32 @@ class CleanupObserver implements TraceObserver {
 
         // add each output file to the path state map
         for( Path path : outputs ) {
+            final Path canonicalPath = toRealPathOrAbsolute(path)
             final pathState = new PathState(task, processConsumersMap[path])
-            if( path !in publishableOutputs )
+            if( canonicalPath !in publishableOutputs )
                 pathState.published = true
 
             log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
-            paths[path] = pathState
+            paths[canonicalPath] = pathState
+            applyPendingClaims(canonicalPath, pathState)
         }
 
         return true
+    }
+
+    private void applyPendingClaims(Path canonicalPath, PathState pathState) {
+        final tasks = pendingClaims.remove(canonicalPath)
+        if( !tasks )
+            return
+        pathState.consumerTasks.addAll(tasks)
+        log.trace "Applied ${tasks.size()} stashed consumer claim(s) for ${canonicalPath.toUriString()}"
+    }
+
+    private void dropPendingClaimsForTask(TaskRun task) {
+        for( final entry : pendingClaims.entrySet().toList() ) {
+            if( entry.value.remove(task) && entry.value.isEmpty() )
+                pendingClaims.remove(entry.key)
+        }
     }
 
     /**
@@ -408,8 +449,9 @@ class CleanupObserver implements TraceObserver {
     }
 
     private void onFilePublish0(Path path) {
+        final Path canonicalPath = toRealPathOrAbsolute(path)
         // get the corresponding task
-        final pathState = paths[path]
+        final pathState = paths[canonicalPath]
         if( pathState != null ) {
             final task = pathState.task
 
@@ -419,14 +461,14 @@ class CleanupObserver implements TraceObserver {
             pathState.published = true
 
             // delete file if it can be deleted
-            if( canDeleteFile(path) )
-                deleteFile(path)
+            if( canDeleteFile(canonicalPath) )
+                deleteFile(canonicalPath)
         }
         else {
             log.trace "File ${path.toUriString()} was published before task was marked as completed"
 
             // save file to be processed when task completes
-            publishedOutputs << path
+            publishedOutputs << canonicalPath
         }
     }
 
@@ -484,6 +526,27 @@ class CleanupObserver implements TraceObserver {
             && !pathState.deleted
             && pathState.consumerProcesses.every( p -> processes[p].closed )
             && pathState.consumerTasks.every( t -> t in completedTasks )
+    }
+
+    /**
+     * Path identity for pendingClaims / paths / publishedOutputs.
+     * Prefer {@link Path#toRealPath()} so bind-mount aliases collapse.
+     * If that fails (missing file, I/O), fall back to
+     * {@code toAbsolutePath().normalize()} — lexical only, not
+     * {@code File.getCanonicalPath()}.
+     */
+    private static Path toRealPathOrAbsolute(Path path) {
+        try {
+            return path.toRealPath()
+        }
+        catch( Exception ignored ) {
+            try {
+                return path.toAbsolutePath().normalize()
+            }
+            catch( Exception ignored2 ) {
+                return path
+            }
+        }
     }
 
     /**
