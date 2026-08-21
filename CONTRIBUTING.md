@@ -22,7 +22,7 @@ Follow these steps to package, upload, and publish the plugin:
 
 1. Update the version in `build.gradle`.
 
-2. Update the [changelog](./CHANGELOG.md).
+2. Make a release commit, e.g. "Release 0.1.0".
 
 3. Run `make release` to build and publish the plugin.
 
