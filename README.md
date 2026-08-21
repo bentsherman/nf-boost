@@ -81,13 +81,13 @@ Limitations:
     ```groovy
     process SPLIT_FASTQ {
       input:
-      val(fastq)
+      path(fastq)
 
       output:
       path(chunks)
 
       exec:
-      chunks = splitFastq(fastq, file: true)
+      chunks = fastq.splitFastq(file: true)
     }
     ```
 
