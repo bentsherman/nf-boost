@@ -2,12 +2,10 @@ name: nf-boost CI
 on:
   push:
     branches:
-      - main
-    tags-ignore:
-      - '*'
+      - 'main'
   pull_request:
-    branches:
-      - '*'
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
 jobs:
   build:
     name: Build nf-boost
