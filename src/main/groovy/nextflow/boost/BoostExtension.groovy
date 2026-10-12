@@ -165,9 +165,11 @@ class BoostExtension extends PluginExtensionPoint {
     DataflowWriteChannel scan(DataflowReadChannel source, seed=null, Closure accumulator) {
         final target = CH.createBy(source)
         def result = seed
+        def seeded = seed != null
 
         final onNext = { val ->
-            result = result == null ? val : accumulator(result, val)
+            result = seeded ? accumulator(result, val) : val
+            seeded = true
             target << result
         }
         final onComplete = {

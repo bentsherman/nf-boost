@@ -56,7 +56,7 @@ class TextWriter {
                 data = new SkipLinesInputStream(data, skipLines)
                 data.consumeHeader()
                 if( keepHeader && !wroteHeader ) {
-                    append(path, toStream(data.getHeader()))
+                    path << data.getHeader()
                     wroteHeader = true
                 }
             }

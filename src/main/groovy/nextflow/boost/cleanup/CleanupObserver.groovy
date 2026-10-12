@@ -83,7 +83,7 @@ class CleanupObserver implements TraceObserver {
     @Override
     void onFlowBegin() {
 
-        // prpeare lookup tables
+        // prepare lookup tables
         final Map<DAG.Vertex,List<DAG.Vertex>> successors = [:]
         final Map<DataflowWriteChannel,List<DAG.Edge>> edgeLookup = [:]
         for( def edge : session.dag.edges ) {
