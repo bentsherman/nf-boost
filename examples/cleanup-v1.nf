@@ -55,7 +55,7 @@ process BAM2 {
 }
 
 process BAM3 {
-  publishDir 'results'
+  publishDir 'results', mode: 'link'
 
   input:
   tuple val(index), path("${index}-2.bam")
@@ -75,7 +75,7 @@ process BAM3 {
 }
 
 process SUMMARY {
-  publishDir 'results'
+  publishDir 'results', mode: 'link'
 
   input:
   path logs

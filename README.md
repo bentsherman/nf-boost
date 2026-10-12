@@ -72,6 +72,8 @@ Limitations:
 
 - Helper files and log files created by Nextflow (e.g. `.command.run`, `.command.log`) are not deleted. Consider using a cleanup policy on the underlying filesystem or object storage to delete these files automatically over time.
 
+- Files that are published as symlinks (the default publish mode) are not deleted, since deleting them would break the published files. Use the `copy` or `link` publish mode to allow these files to be cleaned up.
+
 - Input files that are staged into the work directory (e.g. from an HTTP/FTP server or S3 bucket) are not deleted.
 
 - Files created by operators (e.g. `collectFile`, `splitFastq`) cannot be tracked and so are not deleted. For optimal performance, consider refactoring such operators into processes:

@@ -16,6 +16,7 @@
 
 package nextflow.boost.cleanup
 
+import java.nio.file.Files
 import java.nio.file.Path
 import java.util.concurrent.LinkedBlockingQueue
 
@@ -58,6 +59,8 @@ class CleanupObserver implements TraceObserver {
     private Set<TaskRun> completedTasks = []
 
     private Set<Path> publishedOutputs = []
+
+    private Set<Path> symlinkedOutputs = []
 
     private LinkedBlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>()
 
@@ -246,7 +249,7 @@ class CleanupObserver implements TraceObserver {
                 cleanup |= onTaskComplete0(event.task)
             }
             else if( event instanceof Event.FilePublished ) {
-                onFilePublish0(event.path)
+                onFilePublish0(event.path, event.target)
             }
             else if( event instanceof Event.ProcessClosed ) {
                 onProcessClose0(event.process)
@@ -404,10 +407,18 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFilePublish(Path destination, Path source) {
-        eventQueue.put(new Event.FilePublished(source))
+        eventQueue.put(new Event.FilePublished(source, destination))
     }
 
-    private void onFilePublish0(Path path) {
+    private void onFilePublish0(Path path, Path target) {
+        // deleting a file that was published as a symlink would break the published file
+        if( Files.isSymbolicLink(target) ) {
+            log.warn1("Some files were published as symlinks and will not be deleted by automatic cleanup -- use publish mode 'copy' or 'link' instead", firstOnly: true)
+            log.trace "File ${path?.toUriString()} was published as a symlink, it will not be deleted"
+            symlinkedOutputs << path
+            return
+        }
+
         // get the corresponding task
         final pathState = paths[path]
         if( pathState != null ) {
@@ -474,6 +485,7 @@ class CleanupObserver implements TraceObserver {
      * - the file hasn't already been deleted
      * - all of its process consumers are closed
      * - all of its task consumers are completed
+     * - it was not published as a symlink
      *
      * @param path
      */
@@ -484,6 +496,7 @@ class CleanupObserver implements TraceObserver {
             && !pathState.deleted
             && pathState.consumerProcesses.every( p -> processes[p].closed )
             && pathState.consumerTasks.every( t -> t in completedTasks )
+            && path !in symlinkedOutputs
     }
 
     /**
@@ -536,6 +549,7 @@ class CleanupObserver implements TraceObserver {
         @TupleConstructor
         static class FilePublished implements Event {
             Path path
+            Path target
         }
         @TupleConstructor
         static class ProcessClosed implements Event {

@@ -25,8 +25,6 @@ import groovy.transform.Memoized
 import groovy.util.logging.Slf4j
 import nextflow.file.FileHelper
 import nextflow.processor.PublishDir
-import nextflow.processor.PublishDir.Mode
-import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
 /**
  * Delete temporary files once they are no longer needed.
@@ -39,23 +37,6 @@ import nextflow.processor.TaskRun
 @Slf4j
 @CompileStatic
 class CleanupObserverV1 extends CleanupObserver {
-
-    static private final List<Mode> INVALID_PUBLISH_MODES = [Mode.COPY_NO_FOLLOW, Mode.RELLINK, Mode.SYMLINK]
-
-    /**
-     * Log warning for any process that uses any incompatible features.
-     *
-     * @param process
-     */
-    @Override
-    void onProcessCreate( TaskProcessor process ) {
-        // check for incompatible publish modes
-        final task = process.createTaskPreview()
-        final publishers = task.config.getPublishDir()
-
-        if( publishers.any( p -> p.mode in INVALID_PUBLISH_MODES ) )
-            log.warn "Process `${process.name}` is publishing files as symlinks, which may be invalidated by automatic cleanup -- consider using 'copy' or 'link' instead"
-    }
 
     /**
      * Determine the set of task outputs that might be published
