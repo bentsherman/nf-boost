@@ -59,8 +59,6 @@ class CleanupObserver implements TraceObserver {
 
     private Map<Path,PathState> paths = [:]
 
-    private Set<TaskRun> completedTasks = []
-
     private Set<Path> publishedOutputs = []
 
     private Set<Path> symlinkedOutputs = []
@@ -329,12 +327,14 @@ class CleanupObserver implements TraceObserver {
     }
 
     private boolean onTaskComplete0(TaskRun task) {
-        // mark failed task as completed without scanning for cleanup
+        // remove task as consumer of each input file
+        for( Path path : task.getInputFilesMap().values() )
+            paths[path]?.consumerTasks?.remove(task)
+
+        // skip failed task without scanning for cleanup
         // TODO: wait for retried task to be pending first
-        if( !task.isSuccess() ) {
-            completedTasks << task
+        if( !task.isSuccess() )
             return false
-        }
 
         // query task output files
         final outputs = task
@@ -350,9 +350,6 @@ class CleanupObserver implements TraceObserver {
 
         log.trace "[${task.name}] the following files might be published: ${publishableOutputs*.toUriString()}"
 
-        // mark task as completed
-        completedTasks << task
-
         // remove any outputs that have already been published
         final alreadyPublished = publishedOutputs.intersect(publishableOutputs)
         publishedOutputs.removeAll(alreadyPublished)
@@ -360,7 +357,7 @@ class CleanupObserver implements TraceObserver {
 
         // add each output file to the path state map
         for( Path path : outputs ) {
-            final pathState = new PathState(task, processConsumersMap[path])
+            final pathState = new PathState(task.name, processConsumersMap[path])
             if( path !in publishableOutputs )
                 pathState.published = true
 
@@ -454,9 +451,7 @@ class CleanupObserver implements TraceObserver {
         // get the corresponding task
         final pathState = paths[path]
         if( pathState != null ) {
-            final task = pathState.task
-
-            log.trace "File ${path.toUriString()} was published by task <${task.name}>"
+            log.trace "File ${path.toUriString()} was published by task <${pathState.taskName}>"
 
             // mark file as published
             pathState.published = true
@@ -506,7 +501,8 @@ class CleanupObserver implements TraceObserver {
      * Delete any files that can be deleted.
      */
     private void cleanup0() {
-        for( Path path : paths.keySet() ) {
+        // iterate over a copy since deleted files are removed from the map
+        for( Path path : paths.keySet().toList() ) {
             if( canDeleteFile(path) )
                 deleteFile(path)
         }
@@ -517,7 +513,6 @@ class CleanupObserver implements TraceObserver {
      *
      * A file can be deleted if:
      * - the file has been published (or doesn't need to be published)
-     * - the file hasn't already been deleted
      * - all of its process consumers are closed
      * - all of its task consumers are completed
      * - it was not published as a symlink
@@ -528,24 +523,21 @@ class CleanupObserver implements TraceObserver {
         final pathState = paths[path]
 
         pathState.published
-            && !pathState.deleted
             && pathState.consumerProcesses.every( p -> processes[p].closed )
-            && pathState.consumerTasks.every( t -> t in completedTasks )
+            && pathState.consumerTasks.isEmpty()
             && path !in symlinkedOutputs
     }
 
     /**
-     * Delete a file.
+     * Delete a file and stop tracking it.
      *
      * @param path
      */
     private void deleteFile(Path path) {
-        final pathState = paths[path]
-        final task = pathState.task
+        final pathState = paths.remove(path)
 
-        log.trace "[${task.name}] Deleting file: ${path.toUriString()}"
+        log.trace "[${pathState.taskName}] Deleting file: ${path.toUriString()}"
         FileHelper.deletePath(path)
-        pathState.deleted = true
     }
 
     @TupleConstructor
@@ -569,14 +561,13 @@ class CleanupObserver implements TraceObserver {
 
     @PackageScope
     static class PathState {
-        TaskRun task
+        String taskName
         Set<String> consumerProcesses
         Set<TaskRun> consumerTasks = []
-        boolean deleted = false
         boolean published = false
 
-        PathState(TaskRun task, Set<String> consumerProcesses) {
-            this.task = task
+        PathState(String taskName, Set<String> consumerProcesses) {
+            this.taskName = taskName
             this.consumerProcesses = consumerProcesses
         }
     }
