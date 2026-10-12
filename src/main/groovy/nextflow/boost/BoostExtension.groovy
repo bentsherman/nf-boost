@@ -27,7 +27,6 @@ import groovyx.gpars.dataflow.DataflowReadChannel
 import groovyx.gpars.dataflow.DataflowWriteChannel
 import nextflow.Channel
 import nextflow.Session
-import nextflow.boost.ops.ThenOp
 import nextflow.boost.writers.TextWriter
 import nextflow.extension.CH
 import nextflow.extension.DataflowHelper
@@ -177,31 +176,6 @@ class BoostExtension extends PluginExtensionPoint {
 
         DataflowHelper.subscribeImpl(source, [onNext: onNext, onComplete: onComplete])
         return target
-    }
-
-    @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], Closure closure) {
-        then(source, opts + [onNext: closure])
-    }
-
-    @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:]) {
-        if( opts.emits )
-            throw new IllegalArgumentException('In `then` operator -- emit names are not allowed, use `thenMany` instead')
-        new ThenOp(source, opts).apply().getOutput()
-    }
-
-    @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], DataflowReadChannel other) {
-        then(source, opts, [other])
-    }
-
-    @Operator
-    DataflowWriteChannel then(DataflowReadChannel source, Map opts=[:], List<DataflowReadChannel> others) {
-        List<DataflowReadChannel> sources = []
-        sources.add(source)
-        sources.addAll(others)
-        new ThenOp(sources, opts).apply().getOutput()
     }
 
 }
