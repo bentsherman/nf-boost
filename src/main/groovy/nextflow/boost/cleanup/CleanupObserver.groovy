@@ -18,9 +18,12 @@ package nextflow.boost.cleanup
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 import groovy.transform.CompileStatic
+import groovy.transform.PackageScope
 import groovy.transform.TupleConstructor
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
@@ -66,6 +69,10 @@ class CleanupObserver implements TraceObserver {
 
     private long delayMillis = 5000
 
+    private CountDownLatch done = new CountDownLatch(1)
+
+    private Thread cleanupThread
+
     @Override
     void onFlowCreate(Session session) {
         this.session = session
@@ -82,11 +89,55 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFlowBegin() {
+        final Map<String,List<ProcessOutput>> outputsByProcess = [:]
+        for( def vertex : session.dag.vertices ) {
+            final process = vertex.process
+            if( process == null )
+                continue
+
+            outputsByProcess[process.name] = processOutputs(process).collect { param ->
+                new ProcessOutput(param.getOutChannel(), hasForwardedInputs(param))
+            }
+
+            // add event listener for process close
+            process.operator.addDataflowEventListener(new DataflowEventAdapter() {
+                @Override
+                void afterStop(final DataflowProcessor processor) {
+                    onProcessClose(process)
+                }
+            })
+        }
+
+        this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values())
+
+        // launch thread to handle workflow events and cleanup
+        this.cleanupThread = Threads.start('Task cleanup') {
+            try {
+                while( !done.await(delayMillis, TimeUnit.MILLISECONDS) )
+                    handleEvents()
+            }
+            catch( Throwable e ) {
+                log.debug "Unexpected error in cleanup observer", e
+            }
+        }
+    }
+
+    /**
+     * Determine the consumers of each process output, and whether
+     * it might be published, by traversing the DAG.
+     *
+     * @param dag
+     * @param outputsByProcess
+     * @param publishedChannels
+     */
+    @PackageScope
+    static Map<String,ProcessState> getProcessStates(DAG dag, Map<String,List<ProcessOutput>> outputsByProcess, Collection publishedChannels) {
+        final Map<String,ProcessState> result = [:]
 
         // prepare lookup tables
         final Map<DAG.Vertex,List<DAG.Vertex>> successors = [:]
         final Map<DataflowWriteChannel,List<DAG.Edge>> edgeLookup = [:]
-        for( def edge : session.dag.edges ) {
+        for( def edge : dag.edges ) {
             // lookup vertex -> successor vertices
             if( edge.from !in successors )
                 successors[edge.from] = []
@@ -104,20 +155,19 @@ class CleanupObserver implements TraceObserver {
         // construct process lookup
         final Set<Tuple2<String,Integer>> withForwardedInputs = []
 
-        for( def vertex : session.dag.vertices ) {
+        for( def vertex : dag.vertices ) {
             // skip nodes that are not processes
             final process = vertex.process
             if( process == null )
                 continue
 
             // get the set of consuming processes for each process output
-            final outputs = processOutputs(process)
+            final outputs = outputsByProcess[process.name]
             final List<Set<String>> consumers = outputs.collect { [] as Set }
             final List<Boolean> publishable = outputs.collect { false }
 
             for( int i = 0; i < outputs.size(); i++ ) {
-                final param = outputs[i]
-                final ch = param.getOutChannel()
+                final ch = outputs[i].channel
 
                 // get the set of consuming processes
                 final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
@@ -138,7 +188,7 @@ class CleanupObserver implements TraceObserver {
                 final publisherQueue = [ ch ]
                 while( !publisherQueue.isEmpty() ) {
                     final ch0 = publisherQueue.remove(0)
-                    if( ch0 in session.outputs.values() ) {
+                    if( ch0 in publishedChannels ) {
                         log.trace "Process output `${process.name}/${i+1}` might be published"
                         publishable[i] = true
                         break
@@ -153,25 +203,17 @@ class CleanupObserver implements TraceObserver {
                 }
 
                 // check if output may forward input files
-                if( hasForwardedInputs(param) )
+                if( outputs[i].forwardsInputs )
                     withForwardedInputs << new Tuple2(process.name, i)
             }
 
-            processes[process.name] = new ProcessState(consumers, publishable)
-
-            // add event listener for process close
-            process.operator.addDataflowEventListener(new DataflowEventAdapter() {
-                @Override
-                void afterStop(final DataflowProcessor processor) {
-                    onProcessClose(process)
-                }
-            })
+            result[process.name] = new ProcessState(consumers, publishable)
         }
 
         // if a process B receives files from process A and forwards them
         // as outputs to process C, then process C must be marked as a
         // consumer of process A even if there is no direct dependency
-        processes.each { processName, processState ->
+        result.each { processName, processState ->
             // append indirect consumers (and publishable) for each process output
             for( int i = 0; i < processState.consumers.size(); i++ ) {
                 final consumers = processState.consumers[i]
@@ -180,7 +222,7 @@ class CleanupObserver implements TraceObserver {
                     final j = pair.second
                     if( consumerName in consumers ) {
                         log.trace "Process output `${consumerName}/${j+1}` may forward output files, marking its consumers as indirect consumers of `${processName}/${i+1}`"
-                        final consumerState = processes[consumerName]
+                        final consumerState = result[consumerName]
                         consumers.addAll(consumerState.consumers[j])
                         processState.publishable[i] |= consumerState.publishable[j]
                     }
@@ -190,18 +232,7 @@ class CleanupObserver implements TraceObserver {
             }
         }
 
-        // launch thread to handle workflow events and cleanup
-        Threads.start('Task cleanup') {
-            try {
-                while( true ) {
-                    handleEvents()
-                    Thread.sleep(delayMillis)
-                }
-            }
-            catch( Throwable e ) {
-                log.debug "Unexpected error in cleanup observer", e
-            }
-        }
+        return result
     }
 
     private static List<OutParam> processOutputs(TaskProcessor process) {
@@ -232,7 +263,8 @@ class CleanupObserver implements TraceObserver {
     /**
      * Process workflow events and cleanup.
      */
-    private void handleEvents() {
+    @PackageScope
+    void handleEvents() {
         // remove all events from the queue
         final List<Event> events = []
         eventQueue.drainTo(events)
@@ -464,6 +496,9 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFlowComplete() {
+        // stop the cleanup thread before the final pass, since the cleanup state is not thread-safe
+        done.countDown()
+        cleanupThread?.join()
         handleEvents()
     }
 
@@ -513,7 +548,15 @@ class CleanupObserver implements TraceObserver {
         pathState.deleted = true
     }
 
-    static private class ProcessState {
+    @TupleConstructor
+    @PackageScope
+    static class ProcessOutput {
+        DataflowWriteChannel channel
+        boolean forwardsInputs
+    }
+
+    @PackageScope
+    static class ProcessState {
         List<Set<String>> consumers
         List<Boolean> publishable
         boolean closed = false
@@ -524,7 +567,8 @@ class CleanupObserver implements TraceObserver {
         }
     }
 
-    static private class PathState {
+    @PackageScope
+    static class PathState {
         TaskRun task
         Set<String> consumerProcesses
         Set<TaskRun> consumerTasks = []
