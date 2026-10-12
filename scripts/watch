@@ -11,7 +11,7 @@ watch() {
 
     rm -rf "$DIR" DONE
 
-    ($CMD ; touch DONE ) &
+    ($CMD ; status=$? ; touch DONE ; exit $status ) &
 
     while [[ ! -f DONE ]]; do
         [[ -d "$DIR" ]] && echo "disk usage: $(du -bs "$DIR")"
@@ -19,7 +19,10 @@ watch() {
     done
 
     rm -f DONE
+    wait $!
 }
+
+set -o pipefail
 
 watch \
 | tee >(grep 'disk usage:' | awk '{ print $3 }' > "$OUTFILE") \

@@ -1,11 +1,20 @@
-This directory contains scripts that can be used to benchmark the automatic cleanup. The `examples/cleanup-v2.nf` script is an example pipeline, but you can use any pipeline you want.
+This directory contains scripts that can be used to benchmark the automatic cleanup.
 
-Make sure to enable `nf-boost` with the appropriate version in your Nextflow config.
+Run the full benchmark from anywhere in the repo:
 
-Here's a simple benchmarking workflow:
+```bash
+scripts/benchmark [outdir]
+```
 
-1. Run `./watch baseline.txt` with automatic cleanup disabled. It will save the disk usage over time to `baseline.txt`.
+It installs the current build of the plugin, runs the cleanup example three times (once without cleanup, once with `cleanup-v1`, and once with `cleanup-v2`), and saves the disk usage over time and the metrics (`metrics.json`) to `outdir` (default: `benchmark`). It fails if either cleanup run doesn't reduce the final disk usage, peak disk usage, and area under the curve enough relative to the baseline.
 
-2. Run `./watch cleanup.txt` with automatic cleanup enabled. It will save the disk usage over time to `cleanup.txt`.
+The individual scripts can also be used on their own, from the repo root:
 
-3. Run `./plot baseline.txt cleanup.txt disk-usage.png` to produce a time series plot for the two runs. To run this script, you need Python 3 with the `matplotlib` and `pandas` packages.
+1. `scripts/watch <outfile>` runs a pipeline and saves the disk usage of the work directory over time. Set `CMD` to run a different pipeline (default: `examples/cleanup-v2.nf` with cleanup enabled).
+
+2. `scripts/metrics <inputs...> [--plot <outfile>]` prints the peak disk usage, final disk usage, and area under the curve (GB-hours) of one or more runs as JSON. Use `--plot` to also save a time series plot, which requires the `matplotlib` and `pandas` packages:
+
+   ```bash
+   python3 -m venv .venv && .venv/bin/pip install matplotlib pandas
+   .venv/bin/python scripts/metrics benchmark/baseline.txt benchmark/v1.txt benchmark/v2.txt --plot benchmark/disk-usage.png
+   ```

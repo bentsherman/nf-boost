@@ -8,3 +8,5 @@ gradle.properties
 build
 work
 results
+/benchmark
+.venv

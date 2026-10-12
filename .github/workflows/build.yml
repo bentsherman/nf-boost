@@ -2,18 +2,16 @@ name: nf-boost CI
 on:
   push:
     branches:
-      - '*'
-    tags-ignore:
-      - '*'
+      - 'main'
   pull_request:
-    branches:
-      - '*'
+    types: [opened, reopened, synchronize]
+  workflow_dispatch:
 jobs:
   build:
     name: Build nf-boost
     if: "!contains(github.event.head_commit.message, '[ci skip]')"
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -51,4 +49,7 @@ jobs:
         run: make install
 
       - name: Test
-        run: cd examples ; bash test.sh
+        run: cd examples ; bash test.sh $(ls *.nf | grep -v ^cleanup-)
+
+      - name: Benchmark cleanup
+        run: scripts/benchmark

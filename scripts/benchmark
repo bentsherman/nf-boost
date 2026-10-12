@@ -1,0 +1,44 @@
+#!/bin/bash
+# Compare the work directory disk usage with and without automatic cleanup (v1 and v2).
+
+set -e
+cd "$(dirname "$0")/.."
+
+OUTDIR=${1:-'benchmark'}
+
+unset NXF_WORK
+mkdir -p "$OUTDIR"
+
+make install
+
+# both examples produce the same work files, so one baseline serves both
+CMD="nextflow run examples/cleanup-v2.nf" \
+    scripts/watch "$OUTDIR/baseline.txt"
+
+for v in v1 v2; do
+    CMD="nextflow run examples/cleanup-$v.nf -c examples/cleanup-$v.config -plugins nf-boost@$(cat VERSION)" \
+        scripts/watch "$OUTDIR/$v.txt"
+done
+
+scripts/metrics "$OUTDIR/baseline.txt" "$OUTDIR/v1.txt" "$OUTDIR/v2.txt" | tee "$OUTDIR/metrics.json"
+
+# fail if cleanup doesn't reduce disk usage enough relative to the baseline
+python3 - "$OUTDIR/metrics.json" <<'EOF'
+import json, sys
+
+THRESHOLDS = {
+    'final_gb': 0.01,
+    'peak_gb': 0.75,
+    'auc_gb_hours': 0.6,
+}
+
+m = json.load(open(sys.argv[1]))
+ok = True
+for v in ['v1', 'v2']:
+    for key, max_ratio in THRESHOLDS.items():
+        ratio = m[v][key] / m['baseline'][key]
+        passed = ratio < max_ratio
+        ok &= passed
+        print(f"{'PASS' if passed else 'FAIL'} {v} {key}: {v}/baseline = {ratio:.4f} (threshold < {max_ratio})")
+sys.exit(0 if ok else 1)
+EOF
