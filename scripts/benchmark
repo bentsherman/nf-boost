@@ -12,11 +12,11 @@ mkdir -p "$OUTDIR"
 make install
 
 # both examples produce the same work files, so one baseline serves both
-CMD="nextflow run examples/cleanup-v2.nf" \
+CMD="nextflow run -ansi-log false examples/cleanup-v2.nf" \
     scripts/watch "$OUTDIR/baseline.txt"
 
 for v in v1 v2; do
-    CMD="nextflow run examples/cleanup-$v.nf -c examples/cleanup-$v.config -plugins nf-boost@$(cat VERSION)" \
+    CMD="nextflow run -ansi-log false examples/cleanup-$v.nf -c examples/cleanup-$v.config -plugins nf-boost@$(cat VERSION)" \
         scripts/watch "$OUTDIR/$v.txt"
 done
 
