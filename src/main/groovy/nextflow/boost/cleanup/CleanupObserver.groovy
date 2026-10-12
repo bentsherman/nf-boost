@@ -18,7 +18,9 @@ package nextflow.boost.cleanup
 
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.TimeUnit
 
 import groovy.transform.CompileStatic
 import groovy.transform.TupleConstructor
@@ -65,6 +67,10 @@ class CleanupObserver implements TraceObserver {
     private LinkedBlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>()
 
     private long delayMillis = 5000
+
+    private CountDownLatch done = new CountDownLatch(1)
+
+    private Thread cleanupThread
 
     @Override
     void onFlowCreate(Session session) {
@@ -191,12 +197,10 @@ class CleanupObserver implements TraceObserver {
         }
 
         // launch thread to handle workflow events and cleanup
-        Threads.start('Task cleanup') {
+        cleanupThread = Threads.start('Task cleanup') {
             try {
-                while( true ) {
+                while( !done.await(delayMillis, TimeUnit.MILLISECONDS) )
                     handleEvents()
-                    Thread.sleep(delayMillis)
-                }
             }
             catch( Throwable e ) {
                 log.debug "Unexpected error in cleanup observer", e
@@ -464,6 +468,9 @@ class CleanupObserver implements TraceObserver {
      */
     @Override
     void onFlowComplete() {
+        // stop the cleanup thread before the final pass, since the cleanup state is not thread-safe
+        done.countDown()
+        cleanupThread?.join()
         handleEvents()
     }
 
