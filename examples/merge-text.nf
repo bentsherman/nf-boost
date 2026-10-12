@@ -65,6 +65,14 @@ workflow MERGE_TEXT {
 
   ch_txt = ITEMS_TO_TXT(ch_items)
   ch_txt.view { txt -> txt.text }
+  ch_txt.subscribe { txt ->
+    def lines = txt.readLines()
+    assert lines.first() == '"id"\t"type"\t"name"'
+    assert lines.drop(1).sort() == (1..10).collect { i ->
+      def r = makeRecord(i)
+      "\"${r.id}\"\t\"${r.type}\"\t\"${r.name}\""
+    }
+  }
 }
 
 

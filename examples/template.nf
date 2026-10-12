@@ -16,5 +16,8 @@ workflow {
     The conference committee.
     '''.stripIndent()
 
-  println template(text, binding)
+  result = template(text, binding)
+  println result
+  assert result.startsWith('Dear Grace Hopper,')
+  assert result.contains("We are pleased to inform you that your paper entitled 'Groovy for COBOL programmers' was accepted.")
 }
