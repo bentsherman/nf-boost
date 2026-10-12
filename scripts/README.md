@@ -6,7 +6,7 @@ Run the full benchmark from anywhere in the repo:
 scripts/benchmark [outdir]
 ```
 
-It installs the current build of the plugin, runs the cleanup example three times (once without cleanup, once with `cleanup-v1`, and once with `cleanup-v2`), and saves the disk usage over time and the metrics (`metrics.json`) to `outdir` (default: `benchmark`). It fails if either cleanup run doesn't reduce the final disk usage, peak disk usage, and area under the curve enough relative to the baseline.
+It installs the current build of the plugin, runs the cleanup example three times (once without cleanup, once with `cleanup-v1`, and once with `cleanup-v2`), and saves the disk usage over time and the metrics (`metrics.json`) to `outdir` (default: `benchmark`). It fails if either cleanup run breaks any published files, or doesn't reduce the final disk usage, peak disk usage, and area under the curve enough relative to the baseline.
 
 The individual scripts can also be used on their own, from the repo root:
 

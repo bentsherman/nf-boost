@@ -12,12 +12,19 @@ mkdir -p "$OUTDIR"
 make install
 
 # both examples produce the same work files, so one baseline serves both
+rm -rf results
 CMD="nextflow run -ansi-log false examples/cleanup-v2.nf" \
     scripts/watch "$OUTDIR/baseline.txt"
 
 for v in v1 v2; do
+    rm -rf results
     CMD="nextflow run -ansi-log false examples/cleanup-$v.nf -c examples/cleanup-$v.config -plugins nf-boost@$(cat VERSION)" \
         scripts/watch "$OUTDIR/$v.txt"
+
+    # fail if cleanup deleted any published files
+    for f in summary.txt {1..10}-3.bam; do
+        [[ -s results/$f ]] || { echo "FAIL $v: published file results/$f is missing or broken" ; exit 1 ; }
+    done
 done
 
 scripts/metrics "$OUTDIR/baseline.txt" "$OUTDIR/v1.txt" "$OUTDIR/v2.txt" | tee "$OUTDIR/metrics.json"
