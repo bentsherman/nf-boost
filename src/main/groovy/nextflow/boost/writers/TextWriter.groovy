@@ -28,7 +28,7 @@ class TextWriter {
 
     private boolean newLine = false
 
-    private Integer skipLines
+    private int skipLines
 
     TextWriter(Map opts) {
         // set params
@@ -38,18 +38,13 @@ class TextWriter {
         if( opts.newLine )
             this.newLine = true
 
-        if( opts.skip )
-            this.skipLines = opts.skip as int
+        this.skipLines = opts.skip != null
+            ? opts.skip as int
+            : (keepHeader ? 1 : 0)
 
         // validate params
-        if( keepHeader ) {
-            if( skipLines != null && skipLines < 1 )
-                throw new IllegalArgumentException("In function `mergeText` -- `skip` must be greater than zero when `keepHeader` is specified")
-            skipLines = 1
-        }
-        else {
-            skipLines = 0
-        }
+        if( keepHeader && skipLines < 1 )
+            throw new IllegalArgumentException("In function `mergeText` -- `skip` must be greater than zero when `keepHeader` is specified")
     }
 
     void apply(List items, Path path) {
