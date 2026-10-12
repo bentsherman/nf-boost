@@ -20,7 +20,7 @@ nextflow run hello -plugins nf-boost@<version>
 
 Follow these steps to package, upload, and publish the plugin:
 
-1. Update the version in `build.gradle`.
+1. Update the version in `VERSION`.
 
 2. Make a release commit, e.g. "Release 0.1.0".
 
