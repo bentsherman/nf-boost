@@ -51,17 +51,23 @@ class TextWriter {
         def wroteHeader = false
 
         for( final value : items ) {
-            def data = toStream(value)
-            if( skipLines ) {
-                data = new SkipLinesInputStream(data, skipLines)
-                data.consumeHeader()
-                if( keepHeader && !wroteHeader ) {
-                    path << data.getHeader()
-                    wroteHeader = true
+            final stream = toStream(value)
+            try {
+                def data = stream
+                if( skipLines ) {
+                    data = new SkipLinesInputStream(data, skipLines)
+                    data.consumeHeader()
+                    if( keepHeader && !wroteHeader ) {
+                        path << data.getHeader()
+                        wroteHeader = true
+                    }
                 }
-            }
 
-            append(path, data)
+                append(path, data)
+            }
+            finally {
+                stream.close()
+            }
         }
     }
 
