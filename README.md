@@ -93,6 +93,10 @@ Limitations:
 
   - The `collectFile` operator can be replaced with `mergeText` (in this plugin) in a native process. See the `examples` directory for example usage.
 
+**`boost.cleanupFailedTasks`**
+
+When `true`, delete the work directory of each failed task attempt that is retried (default: `false`). Requires `boost.cleanup` to be enabled. The error is still reported in the log, but the task files (e.g. `.command.err`) will not be available for debugging.
+
 **`boost.cleanupInterval`**
 
 Specify how often to scan for cleanup (default: `'60s'`).

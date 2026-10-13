@@ -38,6 +38,12 @@ class BoostConfig implements ConfigScope {
 
     @ConfigOption
     @Description('''
+        When `true`, delete the work directory of each failed task attempt that is retried (default: `false`). Requires automatic cleanup to be enabled.
+    ''')
+    final boolean cleanupFailedTasks
+
+    @ConfigOption
+    @Description('''
         Specify how often to scan for cleanup (default: `'60s'`).
     ''')
     final Duration cleanupInterval
@@ -47,6 +53,7 @@ class BoostConfig implements ConfigScope {
 
     BoostConfig(Map opts) {
         cleanup = parseCleanup(opts.cleanup)
+        cleanupFailedTasks = opts.cleanupFailedTasks as boolean
         cleanupInterval = opts.cleanupInterval as Duration ?: Duration.of('60s')
     }
 

@@ -45,6 +45,12 @@ class BoostConfigTest extends Specification {
         VALUE << ['v3', 'true', 1]
     }
 
+    def 'should parse cleanup failed tasks option' () {
+        expect:
+        !new BoostConfig([:]).cleanupFailedTasks
+        new BoostConfig([cleanupFailedTasks: true]).cleanupFailedTasks
+    }
+
     def 'should parse cleanup interval' () {
         expect:
         new BoostConfig([:]).cleanupInterval == Duration.of('60s')

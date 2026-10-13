@@ -136,7 +136,7 @@ class CleanupObserverTest extends Specification {
         return path
     }
 
-    TaskRun task(String processName, List<Path> outputs, List<Path> inputs=[], boolean success=true, ErrorStrategy errorAction=null) {
+    TaskRun task(String processName, List<Path> outputs, List<Path> inputs=[], boolean success=true, ErrorStrategy errorAction=null, Path workDir=null) {
         final processor = Stub(TaskProcessor) { getName() >> processName }
         final param = Stub(FileOutParam) { getIndex() >> (short)0 }
         Stub(TaskRun) {
@@ -146,6 +146,7 @@ class CleanupObserverTest extends Specification {
             isSuccess() >> success
             isFailed() >> (errorAction != null)
             getErrorAction() >> errorAction
+            getWorkDir() >> workDir
             getOutputsByType(_) >> (outputs ? [(param): outputs] : [:])
             getInputFilesMap() >> inputs.collectEntries { p -> [p.name, p] }
         }
@@ -360,6 +361,34 @@ class CleanupObserverTest extends Specification {
         observer.handleEvents()
         then:
         Files.exists(bam)
+    }
+
+    def 'should delete the work directory of a failed attempt that is retried if enabled' () {
+        given:
+        def bam = file('a.bam')
+        def taskDir = Files.createDirectories(workDir.resolve('task'))
+        Files.createSymbolicLink(taskDir.resolve('a.bam'), bam)
+        taskDir.resolve('.command.err').text = 'error'
+        def B = task('B', [], [bam], false, ACTION, taskDir)
+        def observer = observer([
+            B: new ProcessState([], []),
+        ])
+        observer.cleanupFailedTasks = ENABLED
+
+        when:
+        observer.onProcessPending(handler(B), null)
+        observer.onProcessComplete(handler(B), null)
+        observer.handleEvents()
+        then:
+        Files.exists(taskDir) == !DELETED
+        Files.exists(bam)
+
+        where:
+        ENABLED | ACTION                    | DELETED
+        true    | ErrorStrategy.RETRY       | true
+        false   | ErrorStrategy.RETRY       | false
+        true    | ErrorStrategy.TERMINATE   | false
+        true    | ErrorStrategy.IGNORE      | false
     }
 
 }
