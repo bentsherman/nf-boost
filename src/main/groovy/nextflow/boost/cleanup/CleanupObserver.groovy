@@ -363,9 +363,7 @@ class CleanupObserver implements TraceObserverV2 {
         log.trace "[${task.name}] the following files might be published: ${publishableOutputs*.toUriString()}"
 
         // remove any outputs that have already been published
-        final alreadyPublished = publishedOutputs.intersect(publishableOutputs)
-        publishedOutputs.removeAll(alreadyPublished)
-        publishableOutputs.removeAll(alreadyPublished)
+        publishableOutputs.removeIf(path -> publishedOutputs.remove(path))
 
         // add each output file to the path state map
         for( Path path : outputs ) {
