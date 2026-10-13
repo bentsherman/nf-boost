@@ -6,7 +6,7 @@ gradle.properties
 
 # Ignore Gradle build output directory
 build
+evals
 work
 results
-/benchmark
 .venv
