@@ -194,6 +194,34 @@ class CleanupObserverTest extends Specification {
         then:
         !Files.exists(bam)
         observer.paths.isEmpty()
+        observer.consumerTasks.isEmpty()
+    }
+
+    def 'should not delete a file whose consumer was created before the producer was marked as completed' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'consumer is created and both processes are closed before the producer is marked as completed'
+        observer.onTaskPending(event(B))
+        observer.onProcessClose(A.processor)
+        observer.onProcessClose(B.processor)
+        observer.onTaskComplete(event(A))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'consumer completes'
+        observer.onTaskComplete(event(B))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+        observer.consumerTasks.isEmpty()
     }
 
     def 'should not delete a file while its consumer process is open' () {
