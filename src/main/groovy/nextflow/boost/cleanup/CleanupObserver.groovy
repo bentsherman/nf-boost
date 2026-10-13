@@ -68,6 +68,8 @@ class CleanupObserver implements TraceObserver {
 
     private long delayMillis = 5000
 
+    private boolean cleanupFailedTasks
+
     private CountDownLatch done = new CountDownLatch(1)
 
     private Thread cleanupThread
@@ -77,6 +79,7 @@ class CleanupObserver implements TraceObserver {
         this.session = session
         final config = new BoostConfig(session.config.boost as Map ?: Collections.emptyMap())
         this.delayMillis = config.cleanupInterval.toMillis()
+        this.cleanupFailedTasks = config.cleanupFailedTasks
 
         if( session.resumeMode )
             log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
@@ -336,8 +339,12 @@ class CleanupObserver implements TraceObserver {
         }
 
         // skip failed task without scanning for cleanup
-        if( task.failed || !task.isSuccess() )
+        if( task.failed || !task.isSuccess() ) {
+            // the retry runs in a new work directory, so the failed attempt is no longer needed
+            if( cleanupFailedTasks && task.errorAction == ErrorStrategy.RETRY && task.workDir != null )
+                deleteWorkDir(task)
             return false
+        }
 
         // query task output files
         final outputs = task
@@ -550,6 +557,21 @@ class CleanupObserver implements TraceObserver {
 
         log.trace "[${pathState.taskName}] Deleting file: ${path.toUriString()}"
         FileHelper.deletePath(path)
+    }
+
+    /**
+     * Delete the work directory of a failed task attempt.
+     *
+     * @param task
+     */
+    private void deleteWorkDir(TaskRun task) {
+        log.trace "[${task.name}] Deleting work directory of failed attempt: ${task.workDir.toUriString()}"
+        try {
+            FileHelper.deletePath(task.workDir)
+        }
+        catch( Exception e ) {
+            log.warn "[${task.name}] Unable to delete work directory of failed attempt: ${task.workDir.toUriString()} -- cause: ${e.message ?: e}"
+        }
     }
 
     @TupleConstructor
