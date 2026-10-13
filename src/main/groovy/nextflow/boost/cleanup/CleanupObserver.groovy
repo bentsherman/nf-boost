@@ -27,18 +27,16 @@ import groovy.transform.PackageScope
 import groovy.transform.TupleConstructor
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
-import groovyx.gpars.dataflow.operator.DataflowEventAdapter
-import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
 import nextflow.boost.BoostConfig
 import nextflow.dag.DAG
 import nextflow.file.FileHelper
 import nextflow.processor.ErrorStrategy
-import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
-import nextflow.trace.TraceObserver
-import nextflow.trace.TraceRecord
+import nextflow.trace.TraceObserverV2
+import nextflow.trace.event.FilePublishEvent
+import nextflow.trace.event.TaskEvent
 import nextflow.script.ProcessConfigV1
 import nextflow.script.ProcessConfigV2
 import nextflow.script.params.FileOutParam
@@ -52,7 +50,7 @@ import nextflow.util.Threads
  */
 @Slf4j
 @CompileStatic
-class CleanupObserver implements TraceObserver {
+class CleanupObserver implements TraceObserverV2 {
 
     private Session session
 
@@ -100,14 +98,6 @@ class CleanupObserver implements TraceObserver {
             outputsByProcess[process.name] = processOutputs(process).collect { param ->
                 new ProcessOutput(param.getOutChannel(), hasForwardedInputs(param))
             }
-
-            // add event listener for process close
-            process.operator.addDataflowEventListener(new DataflowEventAdapter() {
-                @Override
-                void afterStop(final DataflowProcessor processor) {
-                    onProcessClose(process)
-                }
-            })
         }
 
         this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values())
@@ -286,7 +276,7 @@ class CleanupObserver implements TraceObserver {
                 onFilePublish0(event.path, event.target)
             }
             else if( event instanceof Event.ProcessClosed ) {
-                onProcessClose0(event.process)
+                onProcessTerminate0(event.process)
                 cleanup = true
             }
         }
@@ -301,12 +291,11 @@ class CleanupObserver implements TraceObserver {
     /**
      * When a task is created, mark it as a consumer of its input files.
      *
-     * @param handler
-     * @param trace
+     * @param event
      */
     @Override
-    void onProcessPending(TaskHandler handler, TraceRecord trace) {
-        eventQueue.put(new Event.TaskPending(handler.task))
+    void onTaskPending(TaskEvent event) {
+        eventQueue.put(new Event.TaskPending(event.handler.task))
     }
 
     private void onTaskPending0(TaskRun task) {
@@ -322,12 +311,11 @@ class CleanupObserver implements TraceObserver {
      * When a task is completed, track the task and its output files
      * for automatic cleanup.
      *
-     * @param handler
-     * @param trace
+     * @param event
      */
     @Override
-    void onProcessComplete(TaskHandler handler, TraceRecord trace) {
-        eventQueue.put(new Event.TaskCompleted(handler.task))
+    void onTaskComplete(TaskEvent event) {
+        eventQueue.put(new Event.TaskCompleted(event.handler.task))
     }
 
     private boolean onTaskComplete0(TaskRun task) {
@@ -450,12 +438,11 @@ class CleanupObserver implements TraceObserver {
      * If the file is published before the corresponding task is
      * marked as completed, save it for later.
      *
-     * @param destination
-     * @param source
+     * @param event
      */
     @Override
-    void onFilePublish(Path destination, Path source) {
-        eventQueue.put(new Event.FilePublished(source, destination))
+    void onFilePublish(FilePublishEvent event) {
+        eventQueue.put(new Event.FilePublished(event.source, event.target))
     }
 
     private void onFilePublish0(Path path, Path target) {
@@ -497,11 +484,12 @@ class CleanupObserver implements TraceObserver {
      *
      * @param process
      */
-    void onProcessClose(TaskProcessor process) {
+    @Override
+    void onProcessTerminate(TaskProcessor process) {
         eventQueue.put(new Event.ProcessClosed(process))
     }
 
-    private void onProcessClose0(TaskProcessor process) {
+    private void onProcessTerminate0(TaskProcessor process) {
         processes[process.name].closed = true
     }
 

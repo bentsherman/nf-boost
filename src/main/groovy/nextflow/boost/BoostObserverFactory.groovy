@@ -21,8 +21,8 @@ import groovy.util.logging.Slf4j
 import nextflow.Session
 import nextflow.boost.cleanup.CleanupObserver
 import nextflow.boost.cleanup.CleanupObserverV1
-import nextflow.trace.TraceObserver
-import nextflow.trace.TraceObserverFactory
+import nextflow.trace.TraceObserverV2
+import nextflow.trace.TraceObserverFactoryV2
 
 /**
  * Factory for the plugin observer
@@ -31,15 +31,15 @@ import nextflow.trace.TraceObserverFactory
  */
 @Slf4j
 @CompileStatic
-class BoostObserverFactory implements TraceObserverFactory {
+class BoostObserverFactory implements TraceObserverFactoryV2 {
 
     @Override
-    Collection<TraceObserver> create(Session session) {
+    Collection<TraceObserverV2> create(Session session) {
         final observer = createCleanupObserver(session)
         return observer ? [ observer ] : []
     }
 
-    protected TraceObserver createCleanupObserver(Session session) {
+    protected TraceObserverV2 createCleanupObserver(Session session) {
         final opts = session.config.boost as Map ?: Collections.emptyMap()
         final config = new BoostConfig(opts)
 
