@@ -30,6 +30,7 @@ Currently includes the following features:
 
 | Version |	Minimum Nextflow version |
 | ------- | ------------------------ |
+| 0.8.x   | 25.10 |
 | 0.7.x   | 25.10 |
 | 0.6.x   | 25.04 |
 | 0.5.x   | 24.10 |
@@ -186,3 +187,7 @@ The `scan` operator is similar to `reduce` -- it applies an accumulator function
 **`then( ... )`**
 
 The `then` operator was removed in version 0.8.0.
+
+## License
+
+This project is licensed under the Apache License 2.0. See [COPYING](COPYING) for details.
