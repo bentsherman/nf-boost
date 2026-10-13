@@ -574,7 +574,12 @@ class CleanupObserver implements TraceObserverV2 {
         final pathState = paths.remove(path)
 
         log.trace "[${pathState.taskName}] Deleting file: ${path.toUriString()}"
-        FileHelper.deletePath(path)
+        try {
+            FileHelper.deletePath(path)
+        }
+        catch( Exception e ) {
+            log.warn "[${pathState.taskName}] Unable to delete file: ${path.toUriString()} -- cause: ${e.message ?: e}"
+        }
     }
 
     /**

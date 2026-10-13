@@ -200,6 +200,31 @@ class CleanupObserverTest extends Specification {
         observer.consumerTasks.isEmpty()
     }
 
+    def 'should keep deleting files when a file cannot be deleted' () {
+        given:
+        def readOnlyDir = Files.createDirectories(workDir.resolve('read-only'))
+        def bam = readOnlyDir.resolve('a.bam')
+        bam.text = 'a.bam'
+        readOnlyDir.toFile().setWritable(false)
+        def bai = file('a.bai')
+        def A = task('A', [bam, bai])
+        def observer = observer([
+            A: new ProcessState([ [] as Set ], [ false ]),
+        ])
+
+        when:
+        observer.onTaskComplete(event(A))
+        observer.handleEvents()
+        then:
+        noExceptionThrown()
+        Files.exists(bam)
+        !Files.exists(bai)
+        observer.paths.isEmpty()
+
+        cleanup:
+        readOnlyDir.toFile().setWritable(true)
+    }
+
     def 'should not delete a file whose consumer was created before the producer was marked as completed' () {
         given:
         def bam = file('a.bam')
