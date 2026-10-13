@@ -33,6 +33,7 @@ import nextflow.Session
 import nextflow.boost.BoostConfig
 import nextflow.dag.DAG
 import nextflow.file.FileHelper
+import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
@@ -310,7 +311,7 @@ class CleanupObserver implements TraceObserver {
         final inputs = task.getInputFilesMap().values()
         for( Path path : inputs ) {
             if( path in paths )
-                paths[path].consumerTasks << task
+                paths[path].consumerTasks << taskKey(task)
         }
     }
 
@@ -327,13 +328,15 @@ class CleanupObserver implements TraceObserver {
     }
 
     private boolean onTaskComplete0(TaskRun task) {
-        // remove task as consumer of each input file
-        for( Path path : task.getInputFilesMap().values() )
-            paths[path]?.consumerTasks?.remove(task)
+        // remove task as consumer of each input file, unless it will be
+        // retried, in which case the retry will remove it when it completes
+        if( task.errorAction != ErrorStrategy.RETRY ) {
+            for( Path path : task.getInputFilesMap().values() )
+                paths[path]?.consumerTasks?.remove(taskKey(task))
+        }
 
         // skip failed task without scanning for cleanup
-        // TODO: wait for retried task to be pending first
-        if( !task.isSuccess() )
+        if( task.failed || !task.isSuccess() )
             return false
 
         // query task output files
@@ -366,6 +369,15 @@ class CleanupObserver implements TraceObserver {
         }
 
         return true
+    }
+
+    /**
+     * Get a key that identifies a task across retries.
+     *
+     * @param task
+     */
+    private static String taskKey(TaskRun task) {
+        "${task.processor.name}/${task.index}"
     }
 
     /**
@@ -473,8 +485,8 @@ class CleanupObserver implements TraceObserver {
      * mark the process as closed and scan files for cleanup.
      *
      * NOTE: a process may submit additional tasks after it is closed, if a
-     * task fails and is retried. The retried task should be marked as pending
-     * before the failed task is marked as completed.
+     * task fails and is retried. A task that will be retried remains a consumer
+     * of its input files until the retry completes.
      *
      * @param process
      */
@@ -563,7 +575,7 @@ class CleanupObserver implements TraceObserver {
     static class PathState {
         String taskName
         Set<String> consumerProcesses
-        Set<TaskRun> consumerTasks = []
+        Set<String> consumerTasks = []
         boolean published = false
 
         PathState(String taskName, Set<String> consumerProcesses) {

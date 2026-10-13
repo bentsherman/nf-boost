@@ -25,6 +25,7 @@ import groovyx.gpars.dataflow.operator.DataflowOperator
 import nextflow.boost.cleanup.CleanupObserver.ProcessOutput
 import nextflow.boost.cleanup.CleanupObserver.ProcessState
 import nextflow.dag.DAG
+import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
@@ -135,13 +136,16 @@ class CleanupObserverTest extends Specification {
         return path
     }
 
-    TaskRun task(String processName, List<Path> outputs, List<Path> inputs=[], boolean success=true) {
+    TaskRun task(String processName, List<Path> outputs, List<Path> inputs=[], boolean success=true, ErrorStrategy errorAction=null) {
         final processor = Stub(TaskProcessor) { getName() >> processName }
         final param = Stub(FileOutParam) { getIndex() >> (short)0 }
         Stub(TaskRun) {
             getName() >> processName
             getProcessor() >> processor
+            getIndex() >> 1
             isSuccess() >> success
+            isFailed() >> (errorAction != null)
+            getErrorAction() >> errorAction
             getOutputsByType(_) >> (outputs ? [(param): outputs] : [:])
             getInputFilesMap() >> inputs.collectEntries { p -> [p.name, p] }
         }
@@ -280,6 +284,72 @@ class CleanupObserverTest extends Specification {
         given:
         def bam = file('a.bam')
         def A = task('A', [bam], [], false)
+        def observer = observer([
+            A: new ProcessState([ [] as Set ], [ false ]),
+        ])
+
+        when:
+        observer.onProcessComplete(handler(A), null)
+        observer.onProcessClose(A.processor)
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+    }
+
+    def 'should not delete the inputs of a failed task until it is retried' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B1 = task('B', [], [bam], false, ErrorStrategy.RETRY)
+        def B2 = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'consumer fails and will be retried'
+        observer.onProcessComplete(handler(A), null)
+        observer.onProcessClose(A.processor)
+        observer.onProcessPending(handler(B1), null)
+        observer.onProcessClose(B1.processor)
+        observer.onProcessComplete(handler(B1), null)
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'retry completes'
+        observer.onProcessPending(handler(B2), null)
+        observer.onProcessComplete(handler(B2), null)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should delete the inputs of a failed task that will not be retried' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam], false, ErrorStrategy.IGNORE)
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ]),
+            B: new ProcessState([], []),
+        ])
+
+        when:
+        observer.onProcessComplete(handler(A), null)
+        observer.onProcessClose(A.processor)
+        observer.onProcessPending(handler(B), null)
+        observer.onProcessClose(B.processor)
+        observer.onProcessComplete(handler(B), null)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should not track the outputs of a task that failed after a successful exit' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam], [], true, ErrorStrategy.TERMINATE)
         def observer = observer([
             A: new ProcessState([ [] as Set ], [ false ]),
         ])
