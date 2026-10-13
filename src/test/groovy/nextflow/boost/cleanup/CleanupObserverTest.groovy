@@ -186,6 +186,7 @@ class CleanupObserverTest extends Specification {
         observer.handleEvents()
         then:
         !Files.exists(bam)
+        observer.paths.isEmpty()
     }
 
     def 'should not delete a file while its consumer process is open' () {
