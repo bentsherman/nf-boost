@@ -57,12 +57,15 @@ import nextflow.util.Threads
 class CleanupObserver implements TraceObserverV2 {
 
     /**
-     * Operators that emit each received value at most once, so that
-     * a file that passes through them is received by at most one task
-     * of a downstream process.
+     * Operators that emit each received value in at most one output
+     * value, so that a file that passes through them is received by
+     * at most one task of a downstream process.
+     *
+     * NOTE: join is excluded because JoinOpV2 (Nextflow >=26.04) emits
+     * every combination of values with a matching key.
      */
     private static final Set<String> SINGLE_DELIVERY_OPERATORS = [
-        'filter', 'groupTuple', 'join', 'map', 'mix', 'unique', 'until', 'view'
+        'filter', 'groupTuple', 'map', 'mix', 'unique', 'until', 'view'
     ] as Set
 
     private Session session
@@ -396,8 +399,9 @@ class CleanupObserver implements TraceObserverV2 {
             .flatten() as Set<Path>
 
         // get process consumers for each file
-        final processConsumersMap = getProcessConsumers(task, outputs)
-        final singleDeliveryMap = getSingleDeliveryConsumers(task, outputs)
+        final processConsumersMap = [:] as Map<Path,Set<String>>
+        final singleDeliveryMap = [:] as Map<Path,Set<String>>
+        getProcessConsumers(task, outputs, processConsumersMap, singleDeliveryMap)
 
         // get publishable outputs
         final publishableOutputs = getPublishableOutputs(task, outputs)
@@ -417,7 +421,7 @@ class CleanupObserver implements TraceObserverV2 {
 
             // include consumer tasks that were created before this task was marked as completed
             for( final key : consumerTasks.getOrDefault(path, Collections.<String>emptySet()) )
-                pathState.claimedBy << key.substring(0, key.lastIndexOf('/'))
+                pathState.claimedBy << taskKeyProcessName(key)
 
             log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
             paths[path] = pathState
@@ -452,51 +456,25 @@ class CleanupObserver implements TraceObserverV2 {
         "${task.processor.name}/${task.index}"
     }
 
-    /**
-     * Determine the set of process consumers for each output file
-     * of a task based on the output channels that emitted the file.
-     *
-     * @param task
-     * @param outputs
-     */
-    private Map<Path,Set<String>> getProcessConsumers(TaskRun task, Set<Path> outputs) {
-        final Map<Path,Set<String>> result = outputs.inject([:]) { acc, path ->
-            acc[path] = [] as Set
-            acc
-        }
-        final processState = processes[task.processor.name]
-
-        for( final entry : task.getOutputsByType(FileOutParam) ) {
-            final param = entry.key
-            final consumers = processState.consumers[param.index]
-            final value = entry.value
-            if( value instanceof Path )
-                result[value].addAll(consumers)
-            else if( value instanceof Collection<Path> )
-                value.each { el -> result[el].addAll(consumers) }
-            else
-                throw new IllegalArgumentException("Unknown output file object [${value.class.name}]: ${value}")
-        }
-
-        return result
+    private static String taskKeyProcessName(String key) {
+        key.substring(0, key.lastIndexOf('/'))
     }
 
     /**
-     * Determine the set of single-delivery process consumers for each
-     * output file of a task. A process that receives a file from multiple
-     * process outputs is not single-delivery for that file.
+     * Determine the set of process consumers and single-delivery
+     * consumers for each output file of a task based on the output
+     * channels that emitted the file. A process that receives a file
+     * from multiple process outputs is not single-delivery for that file.
      *
      * @param task
      * @param outputs
+     * @param consumersMap
+     * @param singleDeliveryMap
      */
-    private Map<Path,Set<String>> getSingleDeliveryConsumers(TaskRun task, Set<Path> outputs) {
-        final Map<Path,Set<String>> result = outputs.inject([:]) { acc, path ->
-            acc[path] = [] as Set
-            acc
-        }
-        final Map<Path,Set<String>> reached = outputs.inject([:]) { acc, path ->
-            acc[path] = [] as Set
-            acc
+    private void getProcessConsumers(TaskRun task, Set<Path> outputs, Map<Path,Set<String>> consumersMap, Map<Path,Set<String>> singleDeliveryMap) {
+        for( final path : outputs ) {
+            consumersMap[path] = [] as Set
+            singleDeliveryMap[path] = [] as Set
         }
         final processState = processes[task.processor.name]
 
@@ -505,18 +483,23 @@ class CleanupObserver implements TraceObserverV2 {
             final consumers = processState.consumers[param.index]
             final singleDelivery = processState.singleDelivery[param.index]
             final value = entry.value
-            final files = value instanceof Path ? [value] : value as Collection<Path>
+            final Collection<Path> files
+            if( value instanceof Path )
+                files = [value]
+            else if( value instanceof Collection<Path> )
+                files = (Collection<Path>)value
+            else
+                throw new IllegalArgumentException("Unknown output file object [${value.class.name}]: ${value}")
+
             for( final path : files ) {
                 for( final name : consumers ) {
-                    if( !reached[path].add(name) )
-                        result[path].remove(name)
+                    if( !consumersMap[path].add(name) )
+                        singleDeliveryMap[path].remove(name)
                     else if( name in singleDelivery )
-                        result[path].add(name)
+                        singleDeliveryMap[path].add(name)
                 }
             }
         }
-
-        return result
     }
 
     /**

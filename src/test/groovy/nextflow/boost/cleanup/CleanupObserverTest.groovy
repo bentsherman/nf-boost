@@ -31,7 +31,11 @@ import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
+import nextflow.script.ProcessConfigV1
+import nextflow.script.params.EachInParam
 import nextflow.script.params.FileOutParam
+import nextflow.script.params.InputsList
+import nextflow.script.params.ValueInParam
 import nextflow.trace.event.FilePublishEvent
 import nextflow.trace.event.TaskEvent
 import spock.lang.Specification
@@ -103,8 +107,9 @@ class CleanupObserverTest extends Specification {
         def A = process('A')
         def B = process('B')
         def C = process('C')
-        // A/1 -> B, B/1 (forwards inputs) -> C, B/1 is published
+        // A/1 -> B, A/1 -> C, B/1 (forwards inputs) -> C, B/1 is published
         edge(A, B, a1)
+        edge(A, C, a1)
         edge(B, C, b1)
         def outputs = [
             A: [ new ProcessOutput(a1, false) ],
@@ -139,6 +144,9 @@ class CleanupObserverTest extends Specification {
         def E = process('E')
         def F = process('F')
         def G = process('G')
+        def H = process('H')
+        def I = process('I')
+        def J = process('J')
         // A/1 -> B
         edge(A, B, a1)
         // A/1 -> map -> C
@@ -158,17 +166,60 @@ class CleanupObserverTest extends Specification {
         edge(A, F, a2)
         // A/3 (value) -> G
         edge(A, G, a3)
+        // A/1 -> join -> H
+        def m4 = new DataflowQueue()
+        def join = operator([m4], 'join')
+        edge(A, join, a1)
+        edge(join, H, m4)
+        // A/1 -> map -> filter -> I
+        def m5 = new DataflowQueue()
+        def m6 = new DataflowQueue()
+        def map2 = operator([m5], 'map')
+        def filter2 = operator([m6], 'filter')
+        edge(A, map2, a1)
+        edge(map2, filter2, m5)
+        edge(filter2, I, m6)
+        // A/1 -> map -> mix -> J, A/1 -> filter -> mix -> J
+        def m7 = new DataflowQueue()
+        def m8 = new DataflowQueue()
+        def m9 = new DataflowQueue()
+        def map3 = operator([m7], 'map')
+        def filter3 = operator([m8], 'filter')
+        def mix = operator([m9], 'mix')
+        edge(A, map3, a1)
+        edge(A, filter3, a1)
+        edge(map3, mix, m7)
+        edge(filter3, mix, m8)
+        edge(mix, J, m9)
         def outputs = [
             A: [ new ProcessOutput(a1, false), new ProcessOutput(a2, false), new ProcessOutput(a3, false) ],
-            B: [], C: [], D: [], E: [], F: [], G: [],
+            B: [], C: [], D: [], E: [], F: [], G: [], H: [], I: [], J: [],
         ]
 
         when:
         def states = CleanupObserver.getProcessStates(dag, outputs, [], ['F'] as Set)
 
         then:
-        states.A.consumers == [ ['B', 'C', 'D', 'E'] as Set, ['F'] as Set, ['G'] as Set ]
-        states.A.singleDelivery == [ ['B', 'C'] as Set, [] as Set, [] as Set ]
+        states.A.consumers == [ ['B', 'C', 'D', 'E', 'H', 'I', 'J'] as Set, ['F'] as Set, ['G'] as Set ]
+        states.A.singleDelivery == [ ['B', 'C', 'I'] as Set, [] as Set, [] as Set ]
+    }
+
+    def 'should detect each inputs' () {
+        given:
+        def inputs = new InputsList()
+        inputs.addAll(params)
+        def process = Stub(TaskProcessor) {
+            getConfig() >> Stub(ProcessConfigV1) { getInputs() >> inputs }
+        }
+
+        expect:
+        CleanupObserver.hasEachInputs(process) == expected
+
+        where:
+        params                                  | expected
+        []                                      | false
+        [ Stub(ValueInParam) ]                  | false
+        [ Stub(ValueInParam), Stub(EachInParam) ] | true
     }
 
     // -- event handling
@@ -413,6 +464,62 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onProcessClose(B.processor)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should keep a file for a retried single-delivery consumer task' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B1 = task('B', [], [bam], false, ErrorStrategy.RETRY)
+        def B2 = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'consumer fails and will be retried'
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B1))
+        observer.onTaskComplete(event(B1))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'retry completes while the consumer is open'
+        observer.onTaskPending(event(B2))
+        observer.onTaskComplete(event(B2))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should wait for a non-single-delivery consumer to close' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam])
+        def C = task('C', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B', 'C'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+            C: new ProcessState([], []),
+        ])
+
+        when: 'both consumers complete while open'
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B))
+        observer.onTaskPending(event(C))
+        observer.onTaskComplete(event(B))
+        observer.onTaskComplete(event(C))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'non-single-delivery consumer is closed'
+        observer.onProcessClose(C.processor)
         observer.handleEvents()
         then:
         !Files.exists(bam)
