@@ -176,14 +176,14 @@ class CleanupObserverTest extends Specification {
 
         when: 'producer completes'
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)
 
         when: 'consumer is pending'
         observer.onTaskPending(event(B))
-        observer.onProcessTerminate(B.processor)
+        observer.onProcessClose(B.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)
@@ -207,13 +207,13 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)
 
         when:
-        observer.onProcessTerminate(Stub(TaskProcessor) { getName() >> 'B' })
+        observer.onProcessClose(Stub(TaskProcessor) { getName() >> 'B' })
         observer.handleEvents()
         then:
         !Files.exists(bam)
@@ -231,7 +231,7 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)
@@ -257,7 +257,7 @@ class CleanupObserverTest extends Specification {
         when:
         observer.onFilePublish(new FilePublishEvent(bam, target))
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         !Files.exists(bam)
@@ -275,7 +275,7 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.onFilePublish(new FilePublishEvent(bam, target))
         observer.handleEvents()
         then:
@@ -293,7 +293,7 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)
@@ -312,9 +312,9 @@ class CleanupObserverTest extends Specification {
 
         when: 'consumer fails and will be retried'
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.onTaskPending(event(B1))
-        observer.onProcessTerminate(B1.processor)
+        observer.onProcessClose(B1.processor)
         observer.onTaskComplete(event(B1))
         observer.handleEvents()
         then:
@@ -340,9 +340,9 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.onTaskPending(event(B))
-        observer.onProcessTerminate(B.processor)
+        observer.onProcessClose(B.processor)
         observer.onTaskComplete(event(B))
         observer.handleEvents()
         then:
@@ -359,7 +359,7 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onTaskComplete(event(A))
-        observer.onProcessTerminate(A.processor)
+        observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         Files.exists(bam)

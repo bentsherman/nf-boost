@@ -27,6 +27,8 @@ import groovy.transform.PackageScope
 import groovy.transform.TupleConstructor
 import groovy.util.logging.Slf4j
 import groovyx.gpars.dataflow.DataflowWriteChannel
+import groovyx.gpars.dataflow.operator.DataflowEventAdapter
+import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
 import nextflow.boost.BoostConfig
 import nextflow.dag.DAG
@@ -98,6 +100,14 @@ class CleanupObserver implements TraceObserverV2 {
             outputsByProcess[process.name] = processOutputs(process).collect { param ->
                 new ProcessOutput(param.getOutChannel(), hasForwardedInputs(param))
             }
+
+            // add event listener for process close
+            process.operator.addDataflowEventListener(new DataflowEventAdapter() {
+                @Override
+                void afterStop(final DataflowProcessor processor) {
+                    onProcessClose(process)
+                }
+            })
         }
 
         this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values())
@@ -276,7 +286,7 @@ class CleanupObserver implements TraceObserverV2 {
                 onFilePublish0(event.path, event.target)
             }
             else if( event instanceof Event.ProcessClosed ) {
-                onProcessTerminate0(event.process)
+                onProcessClose0(event.process)
                 cleanup = true
             }
         }
@@ -484,12 +494,11 @@ class CleanupObserver implements TraceObserverV2 {
      *
      * @param process
      */
-    @Override
-    void onProcessTerminate(TaskProcessor process) {
+    void onProcessClose(TaskProcessor process) {
         eventQueue.put(new Event.ProcessClosed(process))
     }
 
-    private void onProcessTerminate0(TaskProcessor process) {
+    private void onProcessClose0(TaskProcessor process) {
         processes[process.name].closed = true
     }
 
