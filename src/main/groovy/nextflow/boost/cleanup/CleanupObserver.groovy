@@ -60,6 +60,10 @@ class CleanupObserver implements TraceObserverV2 {
 
     private Map<Path,PathState> paths = [:]
 
+    // tracked separately from paths, since a consumer task can be created
+    // before the task that produced its input files is marked as completed
+    private Map<Path,Set<String>> consumerTasks = [:]
+
     private Set<Path> publishedOutputs = []
 
     private Set<Path> symlinkedOutputs = []
@@ -310,11 +314,8 @@ class CleanupObserver implements TraceObserverV2 {
 
     private void onTaskPending0(TaskRun task) {
         // mark task as consumer of each input file
-        final inputs = task.getInputFilesMap().values()
-        for( Path path : inputs ) {
-            if( path in paths )
-                paths[path].consumerTasks << taskKey(task)
-        }
+        for( Path path : inputPaths(task) )
+            consumerTasks.computeIfAbsent(path, k -> new HashSet<String>()).add(taskKey(task))
     }
 
     /**
@@ -332,8 +333,11 @@ class CleanupObserver implements TraceObserverV2 {
         // remove task as consumer of each input file, unless it will be
         // retried, in which case the retry will remove it when it completes
         if( task.errorAction != ErrorStrategy.RETRY ) {
-            for( Path path : task.getInputFilesMap().values() )
-                paths[path]?.consumerTasks?.remove(taskKey(task))
+            for( Path path : inputPaths(task) ) {
+                final tasks = consumerTasks[path]
+                if( tasks != null && tasks.remove(taskKey(task)) && tasks.isEmpty() )
+                    consumerTasks.remove(path)
+            }
         }
 
         // skip failed task without scanning for cleanup
@@ -374,6 +378,23 @@ class CleanupObserver implements TraceObserverV2 {
         }
 
         return true
+    }
+
+    /**
+     * Get the input files of a task, including both the original path,
+     * which matches the output path of the upstream task, and the real
+     * path (symlinks resolved) that is staged into the task directory.
+     *
+     * @param task
+     */
+    private static Set<Path> inputPaths(TaskRun task) {
+        final Set<Path> result = []
+        for( final holder : task.inputFiles ) {
+            result << holder.storePath
+            if( holder.sourcePath != null )
+                result << holder.sourcePath
+        }
+        return result
     }
 
     /**
@@ -540,7 +561,7 @@ class CleanupObserver implements TraceObserverV2 {
 
         pathState.published
             && pathState.consumerProcesses.every( p -> processes[p].closed )
-            && pathState.consumerTasks.isEmpty()
+            && path !in consumerTasks
             && path !in symlinkedOutputs
     }
 
@@ -594,7 +615,6 @@ class CleanupObserver implements TraceObserverV2 {
     static class PathState {
         String taskName
         Set<String> consumerProcesses
-        Set<String> consumerTasks = []
         boolean published = false
 
         PathState(String taskName, Set<String> consumerProcesses) {
