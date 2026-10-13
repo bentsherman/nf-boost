@@ -1,6 +1,6 @@
 
 plugins {
-    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.12'
+    id 'io.nextflow.nextflow-plugin' version '1.0.0-beta.16'
 }
 
 version = file('VERSION').text.trim()
