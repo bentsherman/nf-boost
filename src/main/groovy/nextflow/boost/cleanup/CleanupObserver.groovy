@@ -32,6 +32,7 @@ import groovyx.gpars.dataflow.operator.DataflowProcessor
 import nextflow.Session
 import nextflow.boost.BoostConfig
 import nextflow.dag.DAG
+import nextflow.extension.CH
 import nextflow.file.FileHelper
 import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskProcessor
@@ -41,6 +42,7 @@ import nextflow.trace.event.FilePublishEvent
 import nextflow.trace.event.TaskEvent
 import nextflow.script.ProcessConfigV1
 import nextflow.script.ProcessConfigV2
+import nextflow.script.params.EachInParam
 import nextflow.script.params.FileOutParam
 import nextflow.script.params.OutParam
 import nextflow.script.params.TupleOutParam
@@ -53,6 +55,15 @@ import nextflow.util.Threads
 @Slf4j
 @CompileStatic
 class CleanupObserver implements TraceObserverV2 {
+
+    /**
+     * Operators that emit each received value at most once, so that
+     * a file that passes through them is received by at most one task
+     * of a downstream process.
+     */
+    private static final Set<String> SINGLE_DELIVERY_OPERATORS = [
+        'filter', 'groupTuple', 'join', 'map', 'mix', 'unique', 'until', 'view'
+    ] as Set
 
     private Session session
 
@@ -96,6 +107,7 @@ class CleanupObserver implements TraceObserverV2 {
     @Override
     void onFlowBegin() {
         final Map<String,List<ProcessOutput>> outputsByProcess = [:]
+        final Set<String> withEachInputs = []
         for( def vertex : session.dag.vertices ) {
             final process = vertex.process
             if( process == null )
@@ -104,6 +116,8 @@ class CleanupObserver implements TraceObserverV2 {
             outputsByProcess[process.name] = processOutputs(process).collect { param ->
                 new ProcessOutput(param.getOutChannel(), hasForwardedInputs(param))
             }
+            if( hasEachInputs(process) )
+                withEachInputs << process.name
 
             // add event listener for process close
             process.operator.addDataflowEventListener(new DataflowEventAdapter() {
@@ -114,7 +128,7 @@ class CleanupObserver implements TraceObserverV2 {
             })
         }
 
-        this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values())
+        this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values(), withEachInputs)
 
         // launch thread to handle workflow events and cleanup
         this.cleanupThread = Threads.start('Task cleanup') {
@@ -132,22 +146,28 @@ class CleanupObserver implements TraceObserverV2 {
      * Determine the consumers of each process output, and whether
      * it might be published, by traversing the DAG.
      *
+     * A consumer is single-delivery if each file emitted by the process
+     * output can be received by at most one of its tasks, in which case
+     * the file can be deleted once that task is done, without waiting
+     * for the consumer to be closed.
+     *
      * @param dag
      * @param outputsByProcess
      * @param publishedChannels
+     * @param withEachInputs
      */
     @PackageScope
-    static Map<String,ProcessState> getProcessStates(DAG dag, Map<String,List<ProcessOutput>> outputsByProcess, Collection publishedChannels) {
+    static Map<String,ProcessState> getProcessStates(DAG dag, Map<String,List<ProcessOutput>> outputsByProcess, Collection publishedChannels, Set<String> withEachInputs = []) {
         final Map<String,ProcessState> result = [:]
 
         // prepare lookup tables
-        final Map<DAG.Vertex,List<DAG.Vertex>> successors = [:]
+        final Map<DAG.Vertex,List<DAG.Edge>> successors = [:]
         final Map<DataflowWriteChannel,List<DAG.Edge>> edgeLookup = [:]
         for( def edge : dag.edges ) {
-            // lookup vertex -> successor vertices
+            // lookup vertex -> outgoing edges
             if( edge.from !in successors )
                 successors[edge.from] = []
-            successors[edge.from] << edge.to
+            successors[edge.from] << edge
 
             // lookup channel -> edges
             if( edge.channel !instanceof DataflowWriteChannel )
@@ -170,25 +190,38 @@ class CleanupObserver implements TraceObserverV2 {
             // get the set of consuming processes for each process output
             final outputs = outputsByProcess[process.name]
             final List<Set<String>> consumers = outputs.collect { [] as Set }
+            final List<Set<String>> singleDelivery = outputs.collect { [] as Set }
             final List<Boolean> publishable = outputs.collect { false }
 
             for( int i = 0; i < outputs.size(); i++ ) {
                 final ch = outputs[i].channel
 
-                // get the set of consuming processes
-                final queue = edgeLookup.getOrDefault(ch, []).collect { edge -> edge.to }
+                // get the set of consuming processes by searching each path from the
+                // output channel, tracking whether the path delivers each value at most once
+                final Set<String> multiDelivery = []
+                final List<Tuple2<DAG.Edge,Boolean>> queue = edgeLookup.getOrDefault(ch, []).collect { edge -> new Tuple2<DAG.Edge,Boolean>(edge, true) }
                 while( !queue.isEmpty() ) {
-                    final w = queue.remove(0)
+                    final pair = queue.remove(0)
+                    final w = pair.v1.to
                     // skip terminal edges
                     if( !w )
                         continue
+                    // every task reads each value of a value channel
+                    final single = pair.v2 && !CH.isValue(pair.v1.channel)
                     // add process nodes to the list of consumers
-                    if( w.process != null )
-                        consumers[i] << w.process.name
+                    if( w.process != null ) {
+                        final name = w.process.name
+                        // a process reached by multiple paths may receive a file more than once
+                        if( !consumers[i].add(name) || !single || name in withEachInputs )
+                            multiDelivery << name
+                    }
                     // add operator nodes to the queue to keep searching
-                    else if( w in successors )
-                        queue.addAll( successors[w] )
+                    else if( w in successors ) {
+                        for( final edge : successors[w] )
+                            queue << new Tuple2<DAG.Edge,Boolean>(edge, single && w.label in SINGLE_DELIVERY_OPERATORS)
+                    }
                 }
+                singleDelivery[i].addAll(consumers[i] - multiDelivery)
 
                 // determine whether the output channel might be published
                 final publisherQueue = [ ch ]
@@ -213,7 +246,7 @@ class CleanupObserver implements TraceObserverV2 {
                     withForwardedInputs << new Tuple2(process.name, i)
             }
 
-            result[process.name] = new ProcessState(consumers, publishable)
+            result[process.name] = new ProcessState(consumers, publishable, singleDelivery)
         }
 
         // if a process B receives files from process A and forwards them
@@ -230,11 +263,12 @@ class CleanupObserver implements TraceObserverV2 {
                         log.trace "Process output `${consumerName}/${j+1}` may forward output files, marking its consumers as indirect consumers of `${processName}/${i+1}`"
                         final consumerState = result[consumerName]
                         consumers.addAll(consumerState.consumers[j])
+                        processState.singleDelivery[i].removeAll(consumerState.consumers[j])
                         processState.publishable[i] |= consumerState.publishable[j]
                     }
                 }
 
-                log.trace "Process output `${processName}/${i+1}` is used by the following processes: ${processState.consumers[i]}"
+                log.trace "Process output `${processName}/${i+1}` is used by the following processes: ${processState.consumers[i]} (single-delivery: ${processState.singleDelivery[i]})"
             }
         }
 
@@ -248,6 +282,11 @@ class CleanupObserver implements TraceObserverV2 {
         if( config instanceof ProcessConfigV1 )
             return config.getOutputs()
         return []
+    }
+
+    private static boolean hasEachInputs(TaskProcessor process) {
+        final config = process.config
+        return config instanceof ProcessConfigV1 && config.getInputs().any( p -> p instanceof EachInParam )
     }
 
     /**
@@ -314,8 +353,10 @@ class CleanupObserver implements TraceObserverV2 {
 
     private void onTaskPending0(TaskRun task) {
         // mark task as consumer of each input file
-        for( Path path : inputPaths(task) )
+        for( Path path : inputPaths(task) ) {
             consumerTasks.computeIfAbsent(path, k -> new HashSet<String>()).add(taskKey(task))
+            paths[path]?.claimedBy?.add(task.processor.name)
+        }
     }
 
     /**
@@ -356,6 +397,7 @@ class CleanupObserver implements TraceObserverV2 {
 
         // get process consumers for each file
         final processConsumersMap = getProcessConsumers(task, outputs)
+        final singleDeliveryMap = getSingleDeliveryConsumers(task, outputs)
 
         // get publishable outputs
         final publishableOutputs = getPublishableOutputs(task, outputs)
@@ -369,9 +411,13 @@ class CleanupObserver implements TraceObserverV2 {
 
         // add each output file to the path state map
         for( Path path : outputs ) {
-            final pathState = new PathState(task.name, processConsumersMap[path])
+            final pathState = new PathState(task.name, processConsumersMap[path], singleDeliveryMap[path])
             if( path !in publishableOutputs )
                 pathState.published = true
+
+            // include consumer tasks that were created before this task was marked as completed
+            for( final key : consumerTasks.getOrDefault(path, Collections.<String>emptySet()) )
+                pathState.claimedBy << key.substring(0, key.lastIndexOf('/'))
 
             log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
             paths[path] = pathState
@@ -430,6 +476,44 @@ class CleanupObserver implements TraceObserverV2 {
                 value.each { el -> result[el].addAll(consumers) }
             else
                 throw new IllegalArgumentException("Unknown output file object [${value.class.name}]: ${value}")
+        }
+
+        return result
+    }
+
+    /**
+     * Determine the set of single-delivery process consumers for each
+     * output file of a task. A process that receives a file from multiple
+     * process outputs is not single-delivery for that file.
+     *
+     * @param task
+     * @param outputs
+     */
+    private Map<Path,Set<String>> getSingleDeliveryConsumers(TaskRun task, Set<Path> outputs) {
+        final Map<Path,Set<String>> result = outputs.inject([:]) { acc, path ->
+            acc[path] = [] as Set
+            acc
+        }
+        final Map<Path,Set<String>> reached = outputs.inject([:]) { acc, path ->
+            acc[path] = [] as Set
+            acc
+        }
+        final processState = processes[task.processor.name]
+
+        for( final entry : task.getOutputsByType(FileOutParam) ) {
+            final param = entry.key
+            final consumers = processState.consumers[param.index]
+            final singleDelivery = processState.singleDelivery[param.index]
+            final value = entry.value
+            final files = value instanceof Path ? [value] : value as Collection<Path>
+            for( final path : files ) {
+                for( final name : consumers ) {
+                    if( !reached[path].add(name) )
+                        result[path].remove(name)
+                    else if( name in singleDelivery )
+                        result[path].add(name)
+                }
+            }
         }
 
         return result
@@ -550,7 +634,8 @@ class CleanupObserver implements TraceObserverV2 {
      *
      * A file can be deleted if:
      * - the file has been published (or doesn't need to be published)
-     * - all of its process consumers are closed
+     * - each of its process consumers is closed, or is single-delivery
+     *   and has created a task that received the file
      * - all of its task consumers are completed
      * - it was not published as a symlink
      *
@@ -560,7 +645,7 @@ class CleanupObserver implements TraceObserverV2 {
         final pathState = paths[path]
 
         pathState.published
-            && pathState.consumerProcesses.every( p -> processes[p].closed )
+            && pathState.consumerProcesses.every( p -> processes[p].closed || (p in pathState.singleDeliveryConsumers && p in pathState.claimedBy) )
             && path !in consumerTasks
             && path !in symlinkedOutputs
     }
@@ -603,11 +688,13 @@ class CleanupObserver implements TraceObserverV2 {
     static class ProcessState {
         List<Set<String>> consumers
         List<Boolean> publishable
+        List<Set<String>> singleDelivery
         boolean closed = false
 
-        ProcessState(List<Set<String>> consumers, List<Boolean> publishable) {
+        ProcessState(List<Set<String>> consumers, List<Boolean> publishable, List<Set<String>> singleDelivery = null) {
             this.consumers = consumers
             this.publishable = publishable
+            this.singleDelivery = singleDelivery ?: consumers.collect { [] as Set<String> }
         }
     }
 
@@ -615,11 +702,14 @@ class CleanupObserver implements TraceObserverV2 {
     static class PathState {
         String taskName
         Set<String> consumerProcesses
+        Set<String> singleDeliveryConsumers
+        Set<String> claimedBy = []
         boolean published = false
 
-        PathState(String taskName, Set<String> consumerProcesses) {
+        PathState(String taskName, Set<String> consumerProcesses, Set<String> singleDeliveryConsumers) {
             this.taskName = taskName
             this.consumerProcesses = consumerProcesses
+            this.singleDeliveryConsumers = singleDeliveryConsumers
         }
     }
 
