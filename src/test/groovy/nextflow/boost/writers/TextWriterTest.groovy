@@ -18,6 +18,7 @@ package nextflow.boost.writers
 
 import java.nio.file.Files
 
+import spock.lang.Requires
 import spock.lang.Specification
 
 class TextWriterTest extends Specification {
@@ -93,6 +94,32 @@ class TextWriterTest extends Specification {
 
         cleanup:
         Files.deleteIfExists(path)
+    }
+
+    @Requires({ new File('/proc/self/fd').exists() })
+    def 'should close input files with options #OPTS' () {
+        given:
+        def dir = Files.createTempDirectory('merge')
+        def items = (1..100).collect { i ->
+            final file = dir.resolve("${i}.txt")
+            file.text = "h1\nx${i}\n"
+            file
+        }
+        def openFiles = { new File('/proc/self/fd').list().length }
+
+        when:
+        def before = openFiles()
+        new TextWriter(OPTS).apply(items, dir.resolve('merged.txt'))
+
+        then:
+        // allow some slack for files opened by other JVM threads
+        openFiles() - before < 10
+
+        cleanup:
+        dir.deleteDir()
+
+        where:
+        OPTS << [ [:], [keepHeader: true] ]
     }
 
     def 'should reject an unsupported item' () {
