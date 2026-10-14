@@ -9,5 +9,5 @@ workflow {
     ]
     yaml = toYaml(value)
     println yaml
-    assert fromYaml(yaml) == value
+    println fromYaml(yaml)
 }

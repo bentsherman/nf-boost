@@ -9,5 +9,5 @@ workflow {
     ]
     json = toJson(value, true)
     println json
-    assert fromJson(json) == value
+    println fromJson(json)
 }

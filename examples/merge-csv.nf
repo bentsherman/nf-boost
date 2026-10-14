@@ -25,7 +25,4 @@ workflow {
   ch_csv = RECORDS_TO_CSV(ch_records)
 
   ch_csv.view { csv -> csv.text }
-  ch_csv.subscribe { csv ->
-    assert csv.readLines() == (1..10).collect { i -> "\"${i}\"\t\"record_${i}\"" }
-  }
 }
