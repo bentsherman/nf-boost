@@ -21,6 +21,7 @@ import java.nio.file.Path
 
 import groovyx.gpars.dataflow.Dataflow
 import groovyx.gpars.dataflow.DataflowQueue
+import groovyx.gpars.dataflow.DataflowVariable
 import groovyx.gpars.dataflow.operator.DataflowOperator
 import nextflow.boost.cleanup.CleanupObserver.ProcessOutput
 import nextflow.boost.cleanup.CleanupObserver.ProcessState
@@ -30,7 +31,11 @@ import nextflow.processor.ErrorStrategy
 import nextflow.processor.TaskHandler
 import nextflow.processor.TaskProcessor
 import nextflow.processor.TaskRun
+import nextflow.script.ProcessConfigV1
+import nextflow.script.params.EachInParam
 import nextflow.script.params.FileOutParam
+import nextflow.script.params.InputsList
+import nextflow.script.params.ValueInParam
 import nextflow.trace.event.FilePublishEvent
 import nextflow.trace.event.TaskEvent
 import spock.lang.Specification
@@ -46,8 +51,8 @@ class CleanupObserverTest extends Specification {
         return vertex
     }
 
-    DAG.Vertex operator(List outputs) {
-        final vertex = new DAG.Vertex(dag, DAG.Type.OPERATOR, 'map')
+    DAG.Vertex operator(List outputs, String label='map') {
+        final vertex = new DAG.Vertex(dag, DAG.Type.OPERATOR, label)
         vertex.operators = [ new DataflowOperator(Dataflow.DATA_FLOW_GROUP, [inputs: [new DataflowQueue()], outputs: outputs], { v -> }) ]
         dag.vertices << vertex
         return vertex
@@ -102,8 +107,9 @@ class CleanupObserverTest extends Specification {
         def A = process('A')
         def B = process('B')
         def C = process('C')
-        // A/1 -> B, B/1 (forwards inputs) -> C, B/1 is published
+        // A/1 -> B, A/1 -> C, B/1 (forwards inputs) -> C, B/1 is published
         edge(A, B, a1)
+        edge(A, C, a1)
         edge(B, C, b1)
         def outputs = [
             A: [ new ProcessOutput(a1, false) ],
@@ -119,6 +125,101 @@ class CleanupObserverTest extends Specification {
         states.A.publishable == [ true ]
         states.B.consumers == [ ['C'] as Set ]
         states.B.publishable == [ true ]
+        states.A.singleDelivery == [ ['B'] as Set ]
+        states.B.singleDelivery == [ ['C'] as Set ]
+    }
+
+    def 'should find single-delivery consumers' () {
+        given:
+        def a1 = new DataflowQueue()
+        def a2 = new DataflowQueue()
+        def a3 = new DataflowVariable()
+        def m1 = new DataflowQueue()
+        def m2 = new DataflowQueue()
+        def m3 = new DataflowQueue()
+        def A = process('A')
+        def B = process('B')
+        def C = process('C')
+        def D = process('D')
+        def E = process('E')
+        def F = process('F')
+        def G = process('G')
+        def H = process('H')
+        def I = process('I')
+        def J = process('J')
+        // A/1 -> B
+        edge(A, B, a1)
+        // A/1 -> map -> C
+        def map = operator([m1], 'map')
+        edge(A, map, a1)
+        edge(map, C, m1)
+        // A/1 -> combine -> D
+        def combine = operator([m2], 'combine')
+        edge(A, combine, a1)
+        edge(combine, D, m2)
+        // A/1 -> E, A/1 -> filter -> E
+        def filter = operator([m3], 'filter')
+        edge(A, E, a1)
+        edge(A, filter, a1)
+        edge(filter, E, m3)
+        // A/2 -> F (each input)
+        edge(A, F, a2)
+        // A/3 (value) -> G
+        edge(A, G, a3)
+        // A/1 -> join -> H
+        def m4 = new DataflowQueue()
+        def join = operator([m4], 'join')
+        edge(A, join, a1)
+        edge(join, H, m4)
+        // A/1 -> map -> filter -> I
+        def m5 = new DataflowQueue()
+        def m6 = new DataflowQueue()
+        def map2 = operator([m5], 'map')
+        def filter2 = operator([m6], 'filter')
+        edge(A, map2, a1)
+        edge(map2, filter2, m5)
+        edge(filter2, I, m6)
+        // A/1 -> map -> mix -> J, A/1 -> filter -> mix -> J
+        def m7 = new DataflowQueue()
+        def m8 = new DataflowQueue()
+        def m9 = new DataflowQueue()
+        def map3 = operator([m7], 'map')
+        def filter3 = operator([m8], 'filter')
+        def mix = operator([m9], 'mix')
+        edge(A, map3, a1)
+        edge(A, filter3, a1)
+        edge(map3, mix, m7)
+        edge(filter3, mix, m8)
+        edge(mix, J, m9)
+        def outputs = [
+            A: [ new ProcessOutput(a1, false), new ProcessOutput(a2, false), new ProcessOutput(a3, false) ],
+            B: [], C: [], D: [], E: [], F: [], G: [], H: [], I: [], J: [],
+        ]
+
+        when:
+        def states = CleanupObserver.getProcessStates(dag, outputs, [], ['F'] as Set)
+
+        then:
+        states.A.consumers == [ ['B', 'C', 'D', 'E', 'H', 'I', 'J'] as Set, ['F'] as Set, ['G'] as Set ]
+        states.A.singleDelivery == [ ['B', 'C', 'I'] as Set, [] as Set, [] as Set ]
+    }
+
+    def 'should detect each inputs' () {
+        given:
+        def inputs = new InputsList()
+        inputs.addAll(params)
+        def process = Stub(TaskProcessor) {
+            getConfig() >> Stub(ProcessConfigV1) { getInputs() >> inputs }
+        }
+
+        expect:
+        CleanupObserver.hasEachInputs(process) == expected
+
+        where:
+        params                                  | expected
+        []                                      | false
+        [ Stub(ValueInParam) ]                  | false
+        [ Stub(ValueInParam), Stub(EachInParam) ] | true
     }
 
     // -- event handling
@@ -280,6 +381,173 @@ class CleanupObserverTest extends Specification {
         then:
         !Files.exists(bam)
         observer.consumerTasks.isEmpty()
+    }
+
+    def 'should delete a file once its single-delivery consumer task is done' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'producer completes'
+        observer.onTaskComplete(event(A))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'consumer is pending'
+        observer.onTaskPending(event(B))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'consumer completes while its process is open'
+        observer.onTaskComplete(event(B))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should not delete a file that is never received by its single-delivery consumer until the consumer is closed' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'consumer task completes without receiving the file (e.g. it was filtered out)'
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B))
+        observer.onTaskComplete(event(B))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when:
+        observer.onProcessClose(B.processor)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should count a single-delivery consumer task created before the producer was marked as completed' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when:
+        observer.onTaskPending(event(B))
+        observer.onTaskComplete(event(A))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when:
+        observer.onTaskComplete(event(B))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should not treat a consumer as single-delivery for a file emitted by multiple outputs' () {
+        given:
+        def bam = file('a.bam')
+        def param1 = Stub(FileOutParam) { getIndex() >> (short)0 }
+        def param2 = Stub(FileOutParam) { getIndex() >> (short)1 }
+        def A = Stub(TaskRun) {
+            getName() >> 'A'
+            getProcessor() >> Stub(TaskProcessor) { getName() >> 'A' }
+            isSuccess() >> true
+            getOutputsByType(_) >> [(param1): bam, (param2): [bam]]
+            getInputFiles() >> []
+        }
+        def B = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set, ['B'] as Set ], [ false, false ], [ ['B'] as Set, ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when:
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B))
+        observer.onTaskComplete(event(B))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when:
+        observer.onProcessClose(B.processor)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should keep a file for a retried single-delivery consumer task' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B1 = task('B', [], [bam], false, ErrorStrategy.RETRY)
+        def B2 = task('B', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+        ])
+
+        when: 'consumer fails and will be retried'
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B1))
+        observer.onTaskComplete(event(B1))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'retry completes while the consumer is open'
+        observer.onTaskPending(event(B2))
+        observer.onTaskComplete(event(B2))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+    }
+
+    def 'should wait for a non-single-delivery consumer to close' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def B = task('B', [], [bam])
+        def C = task('C', [], [bam])
+        def observer = observer([
+            A: new ProcessState([ ['B', 'C'] as Set ], [ false ], [ ['B'] as Set ]),
+            B: new ProcessState([], []),
+            C: new ProcessState([], []),
+        ])
+
+        when: 'both consumers complete while open'
+        observer.onTaskComplete(event(A))
+        observer.onTaskPending(event(B))
+        observer.onTaskPending(event(C))
+        observer.onTaskComplete(event(B))
+        observer.onTaskComplete(event(C))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'non-single-delivery consumer is closed'
+        observer.onProcessClose(C.processor)
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
     }
 
     def 'should not delete a file while its consumer process is open' () {
