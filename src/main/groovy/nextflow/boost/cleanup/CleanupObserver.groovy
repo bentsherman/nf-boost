@@ -40,6 +40,7 @@ import nextflow.processor.TaskRun
 import nextflow.trace.TraceObserverV2
 import nextflow.trace.event.FilePublishEvent
 import nextflow.trace.event.TaskEvent
+import nextflow.trace.event.WorkflowOutputEvent
 import nextflow.script.ProcessConfigV1
 import nextflow.script.ProcessConfigV2
 import nextflow.script.params.FileOutParam
@@ -68,6 +69,9 @@ class CleanupObserver implements TraceObserverV2 {
     private Set<Path> publishedOutputs = []
 
     private Set<Path> symlinkedOutputs = []
+
+    // number of workflow outputs that have not completed, or -1 if not tracked
+    private int pendingWorkflowOutputs = -1
 
     private LinkedBlockingQueue<Event> eventQueue = new LinkedBlockingQueue<>()
 
@@ -115,7 +119,12 @@ class CleanupObserver implements TraceObserverV2 {
             })
         }
 
-        this.processes = getProcessStates(session.dag, outputsByProcess, getPublishedChannels())
+        final publishedChannels = getPublishedChannels()
+        this.processes = getProcessStates(session.dag, outputsByProcess, publishedChannels)
+
+        // without an output directory, workflow outputs are reported from the work directory
+        if( session.outputDir != null && publishedChannels.size() > 0 )
+            this.pendingWorkflowOutputs = publishedChannels.size()
 
         // launch thread to handle workflow events and cleanup
         this.cleanupThread = Threads.start('Task cleanup') {
@@ -304,6 +313,9 @@ class CleanupObserver implements TraceObserverV2 {
                 onProcessClose0(event.process)
                 cleanup = true
             }
+            else if( event instanceof Event.WorkflowOutputCompleted ) {
+                cleanup |= onWorkflowOutput0()
+            }
         }
 
         // scan for cleanup if needed
@@ -379,7 +391,7 @@ class CleanupObserver implements TraceObserverV2 {
         // add each output file to the path state map
         for( Path path : outputs ) {
             final pathState = new PathState(task.name, processConsumersMap[path])
-            if( path !in publishableOutputs )
+            if( path !in publishableOutputs || pendingWorkflowOutputs == 0 )
                 pathState.published = true
 
             log.trace "File ${path} might be used by the following processes: ${processConsumersMap[path]}"
@@ -512,6 +524,27 @@ class CleanupObserver implements TraceObserverV2 {
             // save file to be processed when task completes
             publishedOutputs << path
         }
+    }
+
+    /**
+     * When all workflow outputs are completed, no more files will be
+     * published, so mark any files that were not published as published.
+     *
+     * @param event
+     */
+    @Override
+    void onWorkflowOutput(WorkflowOutputEvent event) {
+        eventQueue.put(new Event.WorkflowOutputCompleted())
+    }
+
+    private boolean onWorkflowOutput0() {
+        if( pendingWorkflowOutputs <= 0 || --pendingWorkflowOutputs > 0 )
+            return false
+
+        log.trace "All workflow outputs are completed, remaining files will not be published"
+        for( final pathState : paths.values() )
+            pathState.published = true
+        return true
     }
 
     /**
@@ -655,6 +688,7 @@ class CleanupObserver implements TraceObserverV2 {
         static class ProcessClosed implements Event {
             TaskProcessor process
         }
+        static class WorkflowOutputCompleted implements Event {}
     }
 
 }

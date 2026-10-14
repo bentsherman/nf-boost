@@ -26,6 +26,7 @@ import groovy.util.logging.Slf4j
 import nextflow.file.FileHelper
 import nextflow.processor.PublishDir
 import nextflow.processor.TaskRun
+import nextflow.trace.event.WorkflowOutputEvent
 /**
  * Delete temporary files once they are no longer needed.
  *
@@ -52,6 +53,15 @@ class CleanupObserverV1 extends CleanupObserver {
             publishers.any( publisher -> isPublishable(publisher, task, output) )
         )
     }
+
+    /**
+     * Ignore workflow outputs, since files are published by
+     * publishDir directives.
+     *
+     * @param event
+     */
+    @Override
+    void onWorkflowOutput(WorkflowOutputEvent event) {}
 
     private boolean isPublishable(PublishDir publisher, TaskRun task, Path source) {
         if( !publisher.enabled )
