@@ -335,6 +335,9 @@ class CleanupObserverTest extends Specification {
         def bam = file('a.bam')
         def target = workDir.resolve('published.bam')
         Files.createLink(target, bam)
+        def other = file('collected.txt')
+        def otherTarget = workDir.resolve('published.txt')
+        Files.createLink(otherTarget, other)
         def A = task('A', [bam])
         def observer = observer([
             A: new ProcessState([ [] as Set ], [ true ]),
@@ -342,11 +345,13 @@ class CleanupObserverTest extends Specification {
 
         when:
         observer.onFilePublish(new FilePublishEvent(bam, target))
+        observer.onFilePublish(new FilePublishEvent(other, otherTarget))
         observer.onTaskComplete(event(A))
         observer.onProcessClose(A.processor)
         observer.handleEvents()
         then:
         !Files.exists(bam)
+        observer.publishedOutputs == [other] as Set
     }
 
     def 'should not delete a file that was published as a symlink' () {
