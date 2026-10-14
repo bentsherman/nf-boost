@@ -22,6 +22,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 
+import groovy.transform.CompileDynamic
 import groovy.transform.CompileStatic
 import groovy.transform.PackageScope
 import groovy.transform.TupleConstructor
@@ -114,7 +115,7 @@ class CleanupObserver implements TraceObserverV2 {
             })
         }
 
-        this.processes = getProcessStates(session.dag, outputsByProcess, session.outputs.values())
+        this.processes = getProcessStates(session.dag, outputsByProcess, getPublishedChannels())
 
         // launch thread to handle workflow events and cleanup
         this.cleanupThread = Threads.start('Task cleanup') {
@@ -126,6 +127,16 @@ class CleanupObserver implements TraceObserverV2 {
                 log.debug "Unexpected error in cleanup observer", e
             }
         }
+    }
+
+    /**
+     * Get the channels published by the entry workflow.
+     */
+    @CompileDynamic
+    private Collection getPublishedChannels() {
+        // WorkflowBinding.getPublished() is package-private
+        final Map published = session.script.getEntryFlow()?.getBinding()?.getPublished()
+        return published != null ? published.values() : []
     }
 
     /**

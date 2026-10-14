@@ -184,6 +184,8 @@ The `exec` operator was removed in version 0.5.0. Use an `exec` process instead.
 
 The `scan` operator is similar to `reduce` -- it applies an accumulator function sequentially to each value in a channel -- however, whereas `reduce` only emits the final result, `scan` emits each partially accumulated value.
 
+The `scan` operator is not supported when static typing is enabled (`nextflow.enable.types`), since Nextflow does not support plugin operators in typed scripts.
+
 **`then( ... )`**
 
 The `then` operator was removed in version 0.8.0.

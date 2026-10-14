@@ -21,6 +21,7 @@ import java.nio.file.Files
 import com.sun.net.httpserver.HttpServer
 import groovyx.gpars.dataflow.DataflowQueue
 import nextflow.Channel
+import nextflow.extension.CH
 import spock.lang.Specification
 
 class BoostExtensionTest extends Specification {
@@ -75,7 +76,7 @@ class BoostExtensionTest extends Specification {
         when:
         ext.mergeCsv(records, path, sep: '\t', header: true)
         then:
-        path.readLines() == ['"id"\t"name"', '"1"\t"a"', '"2"\t"b"']
+        path.readLines() == ['id\tname', '1\ta', '2\tb']
 
         when:
         ext.mergeCsv([], path)
@@ -131,16 +132,18 @@ class BoostExtensionTest extends Specification {
     def 'should scan values' () {
         given:
         def source = new DataflowQueue()
-        VALUES.each { v -> source << v }
-        source << Channel.STOP
 
         when:
         def target = SEED != null
             ? new BoostExtension().scan(source, SEED, ACCUMULATOR)
             : new BoostExtension().scan(source, ACCUMULATOR)
+        // subscribe before emitting, since a broadcast only delivers values written after subscription
+        def reader = CH.getReadChannel(target)
+        VALUES.each { v -> source << v }
+        source << Channel.STOP
         def result = []
         def v
-        while( (v = target.getVal()) != Channel.STOP )
+        while( (v = reader.getVal()) != Channel.STOP )
             result << v
 
         then:

@@ -6,7 +6,7 @@ plugins {
 version = file('VERSION').text.trim()
 
 nextflowPlugin {
-    nextflowVersion = '25.10.0'
+    nextflowVersion = '26.10.0'
 
     provider = 'nextflow'
     className = 'nextflow.boost.BoostPlugin'
