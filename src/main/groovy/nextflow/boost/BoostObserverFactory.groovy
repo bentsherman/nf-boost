@@ -43,11 +43,27 @@ class BoostObserverFactory implements TraceObserverFactoryV2 {
         final opts = session.config.boost as Map ?: Collections.emptyMap()
         final config = new BoostConfig(opts)
 
+        if( config.cleanup && isGlobalCache(session) ) {
+            log.warn "Automatic cleanup is not supported with the global cache, since other runs may use the deleted files -- cleanup will be disabled"
+            return null
+        }
+
         if( config.cleanup == 'v1' )
             return new CleanupObserverV1()
         if( config.cleanup == 'v2' )
             return new CleanupObserver()
         return null
+    }
+
+    /**
+     * Determine whether the session uses the global cache (nf-xpack),
+     * which is shared by other runs.
+     *
+     * @param session
+     */
+    static boolean isGlobalCache(Session session) {
+        // matched by name since the global cache is provided by a private plugin
+        return session.cache?.getClass()?.getName() == 'nextflow.cache.global.GlobalCacheDB'
     }
 
 }
