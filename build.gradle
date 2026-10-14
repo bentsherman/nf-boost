@@ -6,7 +6,7 @@ plugins {
 version = file('VERSION').text.trim()
 
 nextflowPlugin {
-    nextflowVersion = '25.10.0'
+    nextflowVersion = '26.10.0'
 
     provider = 'nextflow'
     className = 'nextflow.boost.BoostPlugin'
@@ -16,3 +16,6 @@ nextflowPlugin {
         'nextflow.boost.BoostObserverFactory'
     ]
 }
+
+// keep parameter names in the plugin spec
+compileGroovy.groovyOptions.parameters = true

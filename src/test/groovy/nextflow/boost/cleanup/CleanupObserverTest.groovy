@@ -33,6 +33,7 @@ import nextflow.processor.TaskRun
 import nextflow.script.params.FileOutParam
 import nextflow.trace.event.FilePublishEvent
 import nextflow.trace.event.TaskEvent
+import nextflow.trace.event.WorkflowOutputEvent
 import spock.lang.Specification
 
 class CleanupObserverTest extends Specification {
@@ -352,6 +353,57 @@ class CleanupObserverTest extends Specification {
         then:
         !Files.exists(bam)
         observer.publishedOutputs == [other] as Set
+    }
+
+    def 'should delete an unpublished file once all workflow outputs are completed' () {
+        given:
+        def bam = file('a.bam')
+        def bai = file('a.bai')
+        def A = task('A', [bam])
+        def B = task('B', [bai])
+        def observer = observer([
+            A: new ProcessState([ [] as Set ], [ true ]),
+            B: new ProcessState([ [] as Set ], [ true ]),
+        ])
+        observer.pendingWorkflowOutputs = 2
+
+        when: 'file is not published'
+        observer.onTaskComplete(event(A))
+        observer.onProcessClose(A.processor)
+        observer.onWorkflowOutput(new WorkflowOutputEvent('bam'))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
+
+        when: 'all workflow outputs are completed'
+        observer.onWorkflowOutput(new WorkflowOutputEvent('summary'))
+        observer.handleEvents()
+        then:
+        !Files.exists(bam)
+
+        when: 'task completes after all workflow outputs are completed'
+        observer.onTaskComplete(event(B))
+        observer.onProcessClose(B.processor)
+        observer.handleEvents()
+        then:
+        !Files.exists(bai)
+    }
+
+    def 'should not delete an unpublished file when workflow outputs are not tracked' () {
+        given:
+        def bam = file('a.bam')
+        def A = task('A', [bam])
+        def observer = observer([
+            A: new ProcessState([ [] as Set ], [ true ]),
+        ])
+
+        when:
+        observer.onTaskComplete(event(A))
+        observer.onProcessClose(A.processor)
+        observer.onWorkflowOutput(new WorkflowOutputEvent('bam'))
+        observer.handleEvents()
+        then:
+        Files.exists(bam)
     }
 
     def 'should not delete a file that was published as a symlink' () {
