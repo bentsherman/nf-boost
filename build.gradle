@@ -16,3 +16,6 @@ nextflowPlugin {
         'nextflow.boost.BoostObserverFactory'
     ]
 }
+
+// keep parameter names in the plugin spec
+compileGroovy.groovyOptions.parameters = true

@@ -33,6 +33,7 @@ import nextflow.extension.DataflowHelper
 import nextflow.plugin.extension.Function
 import nextflow.plugin.extension.Operator
 import nextflow.plugin.extension.PluginExtensionPoint
+import nextflow.script.dsl.Description
 import nextflow.util.CsvWriter
 import org.yaml.snakeyaml.Yaml
 
@@ -49,16 +50,25 @@ class BoostExtension extends PluginExtensionPoint {
     /// FUNCTIONS
 
     @Function
+    @Description('''
+        Load a value from a JSON file.
+    ''')
     Object fromJson(Path source) {
         return new JsonSlurper().parse(source)
     }
 
     @Function
+    @Description('''
+        Load a value from a JSON string.
+    ''')
     Object fromJson(String text) {
         return new JsonSlurper().parseText(text)
     }
 
     @Function
+    @Description('''
+        Convert a value to JSON. Set `pretty` to `true` to pretty-print the output.
+    ''')
     String toJson(Object value, boolean pretty=false) {
         final json = JsonOutput.toJson(value)
         return pretty
@@ -67,28 +77,35 @@ class BoostExtension extends PluginExtensionPoint {
     }
 
     @Function
+    @Description('''
+        Load a value from a YAML file.
+    ''')
     Object fromYaml(Path source) {
         return new YamlSlurper().parse(source)
     }
 
     @Function
+    @Description('''
+        Load a value from a YAML string.
+    ''')
     Object fromYaml(String text) {
         return new YamlSlurper().parseText(text)
     }
 
     @Function
+    @Description('''
+        Convert a value to YAML.
+    ''')
     String toYaml(Object value) {
         return new Yaml().dump(value)
     }
 
-    /**
-     * Save a list of records to a CSV file.
-     *
-     * @param opts
-     * @param records
-     * @param path
-     */
     @Function
+    @Description('''
+        Save a list of records (i.e. tuples or maps) to a CSV file.
+
+        Available options: `header`, `sep`.
+    ''')
     void mergeCsv(Map opts=[:], List records, Path path) {
         if( records.size() == 0 )
             throw new IllegalArgumentException('In `mergeCsv` function -- at least one record must be provided')
@@ -96,14 +113,12 @@ class BoostExtension extends PluginExtensionPoint {
         new CsvWriter(opts).apply(records, path)
     }
 
-    /**
-     * Save a list of items to a text file.
-     *
-     * @param opts
-     * @param items
-     * @param path
-     */
     @Function
+    @Description('''
+        Save a list of items (i.e. files or strings) to a text file.
+
+        Available options: `keepHeader`, `newLine`, `skip`.
+    ''')
     void mergeText(Map opts=[:], List items, Path path) {
         if( items.size() == 0 )
             throw new IllegalArgumentException('In `mergeText` function -- at least one item must be provided')
@@ -111,10 +126,12 @@ class BoostExtension extends PluginExtensionPoint {
         new TextWriter(opts).apply(items, path)
     }
 
-    /**
-     * Make an HTTP request.
-     */
     @Function
+    @Description('''
+        Make an HTTP request. Returns the underlying `HttpURLConnection`.
+
+        Available options: `body`, `headers`, `method`.
+    ''')
     HttpURLConnection request(Map opts=[:], String url) {
         final method = opts.method as String ?: 'GET'
         final headers = opts.headers as Map<String,String> ?: [:]
@@ -131,13 +148,10 @@ class BoostExtension extends PluginExtensionPoint {
         return req
     }
 
-    /**
-     * Render a template from a file with the given binding.
-     *
-     * @param file
-     * @param binding
-     */
     @Function
+    @Description('''
+        Render a template file with the given binding.
+    ''')
     String template(Path file, Map binding) {
         return new GStringTemplateEngine()
             .createTemplate(file.toFile())
@@ -145,13 +159,10 @@ class BoostExtension extends PluginExtensionPoint {
             .toString()
     }
 
-    /**
-     * Render a template with the given binding.
-     *
-     * @param templateText
-     * @param binding
-     */
     @Function
+    @Description('''
+        Render a template string with the given binding.
+    ''')
     String template(String templateText, Map binding) {
         return new GStringTemplateEngine()
             .createTemplate(templateText)
@@ -162,6 +173,9 @@ class BoostExtension extends PluginExtensionPoint {
     /// OPERATORS
 
     @Operator
+    @Description('''
+        Apply an accumulator function sequentially to each value in a channel, and emit each partially accumulated value.
+    ''')
     DataflowWriteChannel scan(DataflowReadChannel source, seed=null, Closure accumulator) {
         final target = CH.createBy(source)
         def result = seed
