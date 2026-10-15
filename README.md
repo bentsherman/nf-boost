@@ -73,7 +73,7 @@ Limitations:
 
   Tasks that hash their inputs by content (i.e. `cache 'deep'` or `cache 'sha256'`) are always re-executed if their inputs were deleted.
 
-- Automatic cleanup is disabled when using the global cache (provided by Seqera Platform), since the cache is shared with other runs.
+- Automatic cleanup is disabled when using a custom cache provided by a plugin (e.g. the global cache provided by Seqera Platform), since the cache may be shared with other runs.
 
 - Helper files and log files created by Nextflow (e.g. `.command.run`, `.command.log`) are not deleted. Consider using a cleanup policy on the underlying filesystem or object storage to delete these files automatically over time.
 

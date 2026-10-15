@@ -96,7 +96,7 @@ class DeletedOutputs {
 
     private static DeletedOutputs create(Session session) {
         final config = new BoostConfig(session.config.boost as Map ?: Collections.emptyMap())
-        if( !config.cleanup || !session.resumeMode || BoostObserverFactory.isGlobalCache(session) )
+        if( !config.cleanup || !session.resumeMode || !BoostObserverFactory.isDefaultCache(session) )
             return new DeletedOutputs(session, null)
         if( !TaskRun.declaredFields.any( f -> f.name == 'deletedOutputs' ) ) {
             log.warn "Automatic cleanup does not support resume with this version of Nextflow -- deleted tasks will be re-executed"

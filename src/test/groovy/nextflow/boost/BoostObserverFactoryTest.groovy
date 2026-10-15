@@ -20,12 +20,11 @@ import nextflow.Session
 import nextflow.boost.cleanup.CleanupObserver
 import nextflow.cache.CacheDB
 import nextflow.cache.CacheStore
-import nextflow.cache.global.GlobalCacheDB
 import spock.lang.Specification
 
 class BoostObserverFactoryTest extends Specification {
 
-    def 'should disable cleanup with the global cache' () {
+    def 'should disable cleanup with a custom cache' () {
         given:
         def session = Mock(Session) {
             getConfig() >> [boost: [cleanup: 'v2']]
@@ -39,8 +38,17 @@ class BoostObserverFactoryTest extends Specification {
 
         where:
         CACHE                                   | EXPECTED
+        null                                    | [CleanupObserver]
         new CacheDB(Mock(CacheStore))           | [CleanupObserver]
-        new GlobalCacheDB(Mock(CacheStore))     | []
+        new CustomCacheDB(Mock(CacheStore))     | []
+    }
+
+}
+
+class CustomCacheDB extends CacheDB {
+
+    CustomCacheDB(CacheStore store) {
+        super(store)
     }
 
 }

@@ -19,6 +19,7 @@ package nextflow.boost
 import groovy.transform.CompileStatic
 import groovy.util.logging.Slf4j
 import nextflow.Session
+import nextflow.cache.CacheDB
 import nextflow.boost.cleanup.CleanupObserver
 import nextflow.boost.cleanup.CleanupObserverV1
 import nextflow.trace.TraceObserverV2
@@ -43,8 +44,8 @@ class BoostObserverFactory implements TraceObserverFactoryV2 {
         final opts = session.config.boost as Map ?: Collections.emptyMap()
         final config = new BoostConfig(opts)
 
-        if( config.cleanup && isGlobalCache(session) ) {
-            log.warn "Automatic cleanup is not supported with the global cache, since other runs may use the deleted files -- cleanup will be disabled"
+        if( config.cleanup && !isDefaultCache(session) ) {
+            log.warn "Automatic cleanup is not supported with a custom cache (e.g. the global cache), since other runs may use the deleted files -- cleanup will be disabled"
             return null
         }
 
@@ -56,14 +57,14 @@ class BoostObserverFactory implements TraceObserverFactoryV2 {
     }
 
     /**
-     * Determine whether the session uses the global cache (nf-xpack),
-     * which is shared by other runs.
+     * Determine whether the session uses the default cache (local or
+     * cloud cache), rather than a custom cache provided by a plugin
+     * (e.g. the global cache), which may be shared by other runs.
      *
      * @param session
      */
-    static boolean isGlobalCache(Session session) {
-        // matched by name since the global cache is provided by a private plugin
-        return session.cache?.getClass()?.getName() == 'nextflow.cache.global.GlobalCacheDB'
+    static boolean isDefaultCache(Session session) {
+        return session.cache == null || session.cache.getClass() == CacheDB
     }
 
 }
