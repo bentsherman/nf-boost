@@ -67,7 +67,13 @@ The default cleanup observer uses `publishDir` directives to determine whether a
 
 Limitations:
 
-- Resume is not supported with automatic cleanup at this time. Deleted tasks will be re-executed on a resumed run. Resume will be supported when this feature is finalized in Nextflow.
+- Resume requires lineage to be enabled (`lineage.enabled = true`) and a version of Nextflow that supports resuming deleted tasks (not yet released). Otherwise, deleted tasks will be re-executed on a resumed run.
+
+  When resuming, a task whose outputs were deleted is resumed from its lineage. If a downstream task needs to be executed, the deleted files are restored by re-executing the tasks that produced them. If a deleted file was published by the workflow and the published copy has since changed, the task that produced it is re-executed so that it can be published again.
+
+  Tasks that hash their inputs by content (i.e. `cache 'deep'` or `cache 'sha256'`) are always re-executed if their inputs were deleted.
+
+- Automatic cleanup is disabled when using a custom cache provided by a plugin (e.g. the global cache provided by Seqera Platform), since the cache may be shared with other runs.
 
 - Helper files and log files created by Nextflow (e.g. `.command.run`, `.command.log`) are not deleted. Consider using a cleanup policy on the underlying filesystem or object storage to delete these files automatically over time.
 

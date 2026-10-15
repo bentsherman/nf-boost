@@ -13,8 +13,15 @@ nextflowPlugin {
     extensionPoints = [
         'nextflow.boost.BoostConfig',
         'nextflow.boost.BoostExtension',
-        'nextflow.boost.BoostObserverFactory'
+        'nextflow.boost.BoostObserverFactory',
+        'nextflow.boost.cleanup.CleanupCacheStrategy',
+        'nextflow.boost.cleanup.CleanupTaskHasherFactory'
     ]
+}
+
+dependencies {
+    compileOnly 'io.nextflow:nf-lineage:26.10.0'
+    testImplementation 'io.nextflow:nf-lineage:26.10.0'
 }
 
 // keep parameter names in the plugin spec

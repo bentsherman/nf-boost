@@ -89,9 +89,6 @@ class CleanupObserver implements TraceObserverV2 {
         final config = new BoostConfig(session.config.boost as Map ?: Collections.emptyMap())
         this.delayMillis = config.cleanupInterval.toMillis()
         this.cleanupFailedTasks = config.cleanupFailedTasks
-
-        if( session.resumeMode )
-            log.warn "This experimental version of automatic cleanup does not work with resume -- deleted tasks will be re-executed"
     }
 
     /**
@@ -349,6 +346,8 @@ class CleanupObserver implements TraceObserverV2 {
      */
     @Override
     void onTaskComplete(TaskEvent event) {
+        // move restored files to the original task directory before tracking them
+        DeletedOutputs.current()?.onTaskComplete(event.handler.task)
         eventQueue.put(new Event.TaskCompleted(event.handler.task))
     }
 
@@ -388,6 +387,10 @@ class CleanupObserver implements TraceObserverV2 {
         // remove any outputs that have already been published
         publishableOutputs.removeIf(path -> publishedOutputs.remove(path))
 
+        // restored files were already published (or not) by the previous run
+        if( isRehydrated(task) )
+            publishableOutputs.clear()
+
         // add each output file to the path state map
         for( Path path : outputs ) {
             final pathState = new PathState(task.name, processConsumersMap[path])
@@ -399,6 +402,12 @@ class CleanupObserver implements TraceObserverV2 {
         }
 
         return true
+    }
+
+    // shortcut: read via dynamic property until TaskRun.rehydrate is available in a Nextflow release
+    @CompileDynamic
+    private static boolean isRehydrated(TaskRun task) {
+        return task.hasProperty('rehydrate') && task.rehydrate
     }
 
     /**
